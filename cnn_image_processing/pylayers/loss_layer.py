@@ -13,6 +13,7 @@ import numpy as np
 import yaml
 import sys
 import logging
+from distutils.util import strtobool
 
 class PyEuclideanLossLayer(caffe.Layer):
     """The Euclidian loss layer takes as input the cnn output data,
@@ -78,40 +79,42 @@ class PyEuclideanLossLayer(caffe.Layer):
             raise Exception("Need at least two inputs (data, label) \
             to compute distance.")
         
-        yaml_opt = yaml.load(self.param_str)
+        self.dict_param = dict((key.strip(), val.strip()) for key, val in
+                               (item.split(':') for item in
+                                self.param_str.split(',')))
         
-        if 'vis' in yaml_opt['loss_opt']:
-            self.vis = yaml_opt["loss_opt"]['vis']
+        if 'vis' in self.dict_param:
+            self.vis = strtobool(self.dict_param['vis'])
         else:
             self.vis = False
         
-        if 'vis_scale' in yaml_opt['loss_opt']:
-            self.vis_scale = yaml_opt["loss_opt"]['vis_scale']
+        if 'vis_scale' in self.dict_param:
+            self.vis_scale = float(self.dict_param['vis_scale'])
         else:
             self.vis_scale = 1.
         
-        if 'vis_normalize' in yaml_opt['loss_opt']:
-            self.normalize = yaml_opt["loss_opt"]['vis_normalize']
+        if 'vis_normalize' in self.dict_param:
+            self.normalize = float(self.dict_param['vis_normalize'])
         else:
             self.normalize = 1.
         
-        if 'vis_mean' in yaml_opt['loss_opt']:
-            self.vis_mean = yaml_opt["loss_opt"]['vis_mean']
+        if 'vis_mean' in self.dict_param:
+            self.vis_mean = float(self.dict_param['vis_mean'])
         else:
             self.vis_mean = 0
         
-        if 'pixel_norm' in yaml_opt['loss_opt']:
-            self.pixel_norm = yaml_opt["loss_opt"]['pixel_norm']
+        if 'pixel_norm' in self.dict_param:
+            self.pixel_norm = strtobool(self.dict_param['pixel_norm'])
         else:
             self.pixel_norm = False
           
-        if 'print' in yaml_opt['loss_opt']:
-            self.b_print = yaml_opt["loss_opt"]['print']
+        if 'print' in self.dict_param:
+            self.b_print = strtobool(self.dict_param['print'])
         else:
             self.b_print = False
           
-        if 'print_iter' in yaml_opt['loss_opt']:
-            self.print_iter = yaml_opt["loss_opt"]['print_iter']
+        if 'print_iter' in self.dict_param:
+            self.print_iter = int(self.dict_param['print_iter'])
         else:
             self.print_iter = 1
         
