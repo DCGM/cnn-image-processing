@@ -1,175 +1,18 @@
+'''
+Created on May 27, 2016
+
+@author: isvoboda
+'''
+
 from __future__ import print_function
 from __future__ import division
-import sys
+
+import caffe
 import cv2
 import numpy as np
-import caffe
 import yaml
-from utils import RADequeue
+import sys
 import logging
-
-module_logger = logging.getLogger(__name__)
-module_logger.setLevel(logging.INFO)
-
-class PySubL(caffe.Layer):
-    """A layer that compute bottom[0].data - bottom[1].data"""
-    
-    def setup(self, bottom, top):
-        if len(bottom) != 2 :
-            raise Exception("PySubL has to have 2 inputs.")
-        
-        self.i_data = 0
-        self.i_label = 1
-        # Compute the border
-        label_shape = np.asarray(bottom[self.i_label].data.shape[2:])
-        data_shape = np.asarray(bottom[self.i_data].data.shape[2:])
-        self.borders = label_shape - data_shape
-        #https://www.python.org/dev/peps/pep-0238/ ie floor division
-        self.borders //= 2
-        
-    def reshape(self, bottom, top):
-        top[0].reshape(*bottom[self.i_data].data.shape)
-     
-    def forward(self, bottom, top):
-        (i_crop_x, i_crop_y) = self.borders
-        len_x = bottom[self.i_data].data.shape[2]
-        len_y = bottom[self.i_data].data.shape[3]
-        label_data = bottom[self.i_label].data
-        crop_data = label_data[:, :, i_crop_x:i_crop_x + len_x,
-                               i_crop_y:i_crop_y + len_y]
-         
-        top[0].data[...] = crop_data - bottom[self.i_data].data
-     
-    def backward(self, top, propagate_down, bottom):
-        bottom[self.i_data].diff[...] = top[0].diff
-        
-class PyAddL(caffe.Layer):
-    """A layer that compute bottom[0].data + bottom[1].data"""
-    
-    def setup(self, bottom, top):
-        if len(bottom) != 2 :
-            raise Exception("PySubL has to have 2 inputs.")
-        self.i_data = 0
-        self.i_label = 1
-        # Compute the border
-        label_shape = np.asarray(bottom[self.i_label].data.shape[2:])
-        data_shape = np.asarray(bottom[self.i_data].data.shape[2:])
-        self.borders = label_shape - data_shape
-        self.borders //= 2
-        
-    def reshape(self, bottom, top):
-        top[0].reshape(*bottom[self.i_data].data.shape)
-    
-    def forward(self, bottom, top):
-        (i_crop_x, i_crop_y) = self.borders
-        len_x = bottom[self.i_data].data.shape[2]
-        len_y = bottom[self.i_data].data.shape[3]
-        label_data = bottom[self.i_label].data
-        crop_data = label_data[:, :, i_crop_x:i_crop_x + len_x,
-                               i_crop_y:i_crop_y + len_y]
-        top[0].data[...] = crop_data + bottom[self.i_data].data
-    
-    def backward(self, top, propagate_down, bottom):
-        bottom[self.i_data].diff[...] = top[0].diff
-        
-class PyCropL(caffe.Layer):
-    """
-    Crop the center of bottom[0].data according the bottom[1].data
-    """
-    def setup(self, bottom, top):
-        if len(bottom) != 2 :
-            raise Exception("PyCropL has to have 2 inputs.")
-        self.i_data = 0
-        self.i_label = 1
-        # Compute the border
-        label_shape = np.asarray(bottom[self.i_label].data.shape[2:])
-        data_shape = np.asarray(bottom[self.i_data].data.shape[2:])
-        self.borders = data_shape - label_shape
-        if not np.all(self.borders >= 0):
-            raise Exception("Bottom input 0 is smaller then the"
-            " crop refference 1.")
-        self.borders //= 2
-        
-    def reshape(self, bottom, top):
-        top[0].reshape(*bottom[self.i_label].data.shape)
-    
-    def forward(self, bottom, top):
-        (i_crop_x, i_crop_y) = self.borders
-        len_x = bottom[self.i_label].data.shape[2]
-        len_y = bottom[self.i_label].data.shape[3]
-        data = bottom[self.i_data].data
-        crop_data = data[:, :, i_crop_x:i_crop_x + len_x,
-                               i_crop_y:i_crop_y + len_y]
-        top[0].data[...] = crop_data
-    
-    def backward(self, top, propagate_down, bottom):
-        """
-        ToDo realy pass only the i_data?
-        """
-        pad_params=((0,0),(0,0),
-                    (self.borders,self.borders),(self.borders,self.borders))
-        bottom[self.i_data].diff[...] = np.pad(top[0].diff, pad_params,
-                                               mode='constant',
-                                               constant_values=(0,0))
-
-class PyPSNRL(caffe.Layer):
-    """
-    Compute a PSNR of two inputs and PSNR with IPSNR of 3 inputs
-    Args:
-        max: float
-            The maximum value in the input data used to compute the PSNR.
-            Default is 255
-	history_size: uint
-	     Size of history a floating avarge is computed from.
-    """
-    def setup(self, bottom, top):
-        self.log = logging.getLogger(__name__ + ".PyPSNRL")
-        if len(bottom) < 2 or len(bottom) > 3:
-            raise Exception("Need two inputs at least or 3 at most.")
-        self.dict_param = dict((key.strip(), val.strip()) for key, val in
-                               (item.split(':') for item in
-                                self.param_str.split(',')))
-        if 'max' in self.dict_param:
-            self.max = float(self.dict_param['max'])
-        else:
-            self.max = 255
-        if 'history_size' in self.dict_param:
-            self.history_size = np.uint(self.dict_param['history_size'])
-        else:
-            self.history_size = 50
-            
-        self.psnr_buffer = RADequeue(max_size=self.history_size)
-       
-    def reshape(self, bottom, top):
-        if len(top) > len(bottom):
-            raise Exception("Layer produce more outputs then has its inputs.")
-        
-        for i_input in xrange(len(top)):
-            top[i_input].reshape(*bottom[i_input].data.shape)
-    
-    def forward(self, bottom, top):
-        psnr = self.psnr(bottom)
-        msg = "\n".join('PSNR {}: {}'.format(*val) for val in enumerate(psnr))
-        self.log.info(msg)
-        if len(psnr) == 2:
-            self.log("iPSNR: {}".format(psnr[0] - psnr[1]))
-    
-    def backward(self, top, propagate_down, bottom):
-        for i_diff in xrange(len(top)):
-            bottom[i_diff].diff[...] = top[i_diff].diff
-    
-    def psnr(self, bottom):
-        results = []
-        for i_input in xrange(len(bottom)-1):
-            diff = bottom[-1].data - bottom[i_input].data
-            ssd = (diff**2).sum()
-            mse = ssd / float(diff.size)
-            if mse <= 0:
-                results.append(np.nan)
-            else:
-                psnr = 10 * np.log10(self.max**2 / mse)
-                results.append(psnr)
-        return results
 
 class PyEuclideanLossLayer(caffe.Layer):
     """The Euclidian loss layer takes as input the cnn output data,

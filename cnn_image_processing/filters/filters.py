@@ -1,10 +1,7 @@
-#!/usr/bin/env python
 from __future__ import print_function
 import cv2
 import logging
 import numpy as np
-
-module_logger = logging.getLogger(__name__)
 
 class TFilter(object):
     "Tuple Filter container."
