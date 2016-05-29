@@ -10,23 +10,29 @@ from __future__ import division
 import caffe
 import cv2
 import numpy as np
-import yaml
-import sys
 import logging
 from distutils.util import strtobool
 
+from ..utils import RoundBuffer
+
 class PyEuclideanLossLayer(caffe.Layer):
-    """The Euclidian loss layer takes as input the cnn output data,
-    label, and optional cnn input data. If cnn input data is defined
-    the layer prints the iPSNR of cnn input data and the
-    cnn output reconstruction.
+    """The Euclidian loss layer takes as input the 2 or 3 bottoms,
+    bottom[0] is backward propagated.
+    bottom[1] except bottom[1] == last bottom is used to compute the iPSNR.
+    iPSNR is computed as PSNR(bottom[0]) - PSNR(bottom[1])
+    bottom[-1] is the label according is computed the PSNR 
     
-    Loss is defined as: (cnn output data - label) / [batch_size | n_pixels]
+    Loss is defined as: (bottom[0] - bottom[end]) / [batch_size | n_pixels] / 2
     Parameters:
     -----------
       pixel_norm: boolean
-        True computes loss normalized by pixels,
+        True computes loss normalized by number of pixels,
         False loss normalized by batch size
+      
+      psnr_max: float
+          Value of the maximum value the PSNR is computed from
+          For uint image it is 255
+          For normalized float image it is 1
       
       vis: boolean
         True visualize the layer input, False do not visualize
@@ -36,15 +42,17 @@ class PyEuclideanLossLayer(caffe.Layer):
       
       vis_normalize: float
         value normalization factor
+        default: 1
         
       vis_mean: float
         mean added to the visualized data
+        default: 0
       
       print: boolean
-        print the PSNR & iPSNR
+        print the PSNR & iPSNR (if 3 inpouts available)
       
       print_iter: int
-        print PSNR and iPSNR every ith iteration
+        print PSNR (and iPSNR) every ith iteration
       
       
         
@@ -52,19 +60,18 @@ class PyEuclideanLossLayer(caffe.Layer):
     --------------------------
     layer {
       type: 'Python'
-      name: 'loss'
+      name: 'Loss'
       top: 'loss'
       bottom: 'reconstruction'
       bottom: 'label'
       bottom: 'data'
       python_param {
         # the module name - the filename-that needs to be in $PYTHONPATH
-        module: 'pylayers'
+        module: 'cnn_image_processing'
         # the layer name - the class name in the module
         layer: 'PyEuclideanLossLayer'
-        param_str: "loss_opt: {'pixel_norm': True, 'vis': True, 'vis_scale': 6,
-        'vis_mean': 127, 'vis_normalize': 0.004, 'print': True,
-        'print_iter': 50}"
+        param_str: "pixel_norm: True, psnr_max: 255, vis: True, vis_scale: 6,
+        vis_mean: 127, vis_normalize: 0.004, print: True, print_iter: 50}"
       }
       # set loss weight so Caffe knows this is a loss layer.
       # since PythonLayer inherits directly from Layer,
@@ -78,6 +85,8 @@ class PyEuclideanLossLayer(caffe.Layer):
         if len(bottom) < 2:
             raise Exception("Need at least two inputs (data, label) \
             to compute distance.")
+        
+        self.log = logging.getLogger(__name__)
         
         self.dict_param = dict((key.strip(), val.strip()) for key, val in
                                (item.split(':') for item in
@@ -117,97 +126,87 @@ class PyEuclideanLossLayer(caffe.Layer):
             self.print_iter = int(self.dict_param['print_iter'])
         else:
             self.print_iter = 1
+            
+        if 'psnr_max' in self.dict_param:
+            self.max = float(self.dict_param['psnr_max'])
+        else:
+            self.max = 255
         
         
-        print("PyEuclidianLossLayer vis: {}, vis_scale: {}, vis_normalize: {},"
-        " vis_mean: {}, pixel_norm: {}, print: {}, print_iter: {}"\
-              .format(self.vis, self.vis_scale, self.normalize, self.vis_mean,
-                      self.pixel_norm, self.b_print, self.print_iter))
+        self.log.info(self.param_str)
         
         self.iteration = np.uint(0)
-        self.step = 50
-        self.historySize = 200
-        self.PSNR = []
-        self.IPSNR = []
-        
-        self.i_cnn_data = 0
-        self.i_label = 1
-        self.i_data = 2
-        # Compute the label cnn_data border
-        (x_label, y_label) = bottom[self.i_label].data.shape[2:]
-        (x_cnn_data, y_cnn_data) = bottom[self.i_cnn_data].data.shape[2:]
-        self.label_cnn_data_borders =\
-          np.asarray([x_label, y_label]) - np.asarray([x_cnn_data, y_cnn_data])
-        self.label_cnn_data_borders //= 2
-        
-        print("PyEuclidianLossLayer label {} cnn output {} border: {}"\
-              .format(bottom[self.i_label].data.shape,
-                      bottom[self.i_cnn_data].data.shape,
-                      self.label_cnn_data_borders))
-        if(len(bottom) > 2):
-            # Compute the data label
-            (x_data, y_data) = bottom[self.i_data].data.shape[2:]
-            self.data_cnn_data_borders =\
-            np.asarray([x_data, y_data]) - np.asarray([x_cnn_data, y_cnn_data])
-            self.data_cnn_data_borders //= 2
-            print("PyEuclidianLossLayer data {} cnn output {} border: {}"
-                  .format(bottom[self.i_data].data.shape,
-                          bottom[self.i_cnn_data].data.shape,
-                          self.data_cnn_data_borders))
-            
-        self.diff = np.zeros_like(bottom[self.i_cnn_data].data,
-                                      dtype=np.float64)
+        self.step = 5
+        self.history_size = 200
+        self.psnr_buffers = [RoundBuffer(max_size=self.history_size)
+                             for _ in xrange(len(bottom)-1)]      
+
+        # Compute the borders        
+        self.borders = []
+        (shape_cnn_y, shape__cnn_x) = bottom[0].data.shape[2:]
+        for i_bot in xrange(len(bottom)):   
+            (shape_y, shape_x) = bottom[i_bot].data.shape[2:]    
+            self.borders.append(np.asarray( (shape_y-shape_cnn_y,
+                                             shape_x-shape__cnn_x) ) // 2)
+            self.log.info("Bottom[0]  {},  Bottom[{}] {} border: {}"
+              .format(bottom[0].data.shape,
+                      i_bot,
+                      bottom[i_bot].data.shape,
+                      self.borders[i_bot]))
+                    
+        self.diff = np.zeros_like(bottom[0].data, dtype=np.float64)
         top[0].reshape(1)
-#         self.reshape_count = 0
-        self.batch_size =  bottom[self.i_cnn_data].num
-        self.pixel_num = bottom[self.i_cnn_data].data.size
+
+        self.batch_size =  bottom[0].num
+        self.pixel_num = bottom[0].data.size
 
     def reshape(self, bottom, top):        
 #         difference is shape of cnn data
-        if self.diff.shape != bottom[self.i_cnn_data].data.shape:
-            self.diff = np.zeros_like(bottom[self.i_cnn_data].data,
+        if self.diff.shape != bottom[0].data.shape:
+            self.diff = np.zeros_like(bottom[0].data,
                                       dtype=np.float64)
             
-            self.batch_size =  bottom[self.i_cnn_data].num
-            self.pixel_num = bottom[self.i_cnn_data].data.size
+            self.batch_size =  bottom[0].num
+            self.pixel_num = bottom[0].data.size
             
             # loss output is scalar
             top[0].reshape(1)
 
     def forward(self, bottom, top):    
-        crop_label = self.crop( bottom[self.i_label],
-                                self.label_cnn_data_borders)
+        cropped_blobs = self.crop_all(bottom)
 
-        self.diff[...] = bottom[self.i_cnn_data].data - crop_label
+        l_psnr, l_diff, l_ssd = self.psnr(cropped_blobs)
+        self.diff[...] = l_diff[0]
+
+        for i_val, val in enumerate(l_psnr):
+            self.psnr_buffers[i_val].append_round(val)
         
-        PSNR, SSD = self.psnr(self.diff)
-        self.appendPSNR(PSNR, self.PSNR)
         #Euclidian loss
         if self.pixel_norm:
-            top[0].data[...] = SSD / self.pixel_num / 2.
+            top[0].data[...] = l_ssd[0] / self.pixel_num / 2.
         else:
-            top[0].data[...] = SSD / self.batch_size / 2.
-        
+            top[0].data[...] = l_ssd[0] / self.batch_size / 2.
         
         if self.b_print and self.iteration % self.print_iter == 0:
-            print("Forward Loss: {}".format(np.squeeze(top[0].data)),
-                file=sys.stderr) 
-            print("PSNR: {}".format(np.average(self.PSNR)), file=sys.stderr) 
-            if len(bottom) == 3:
-                crop_data = self.crop(bottom[self.i_data],
-                                      self.data_cnn_data_borders)
-                diff_data = crop_data - crop_label
-                PSNR_data, SSD_data = self.psnr(diff_data)
-                self.appendPSNR(PSNR - PSNR_data, self.IPSNR)
-                print("iPSNR: {}".format(np.average(self.IPSNR)),
-                      file=sys.stderr)
+            self.log.info(" Forward Loss: {}".format(np.squeeze(top[0].data)))
+            
+            avg_psnr = [sum(val)/val.size for val in self.psnr_buffers]
+            
+            avg_msg = " PSNR average of {} samples".format(self.psnr_buffers[0].size)
+            self.log.info(avg_msg)
+            
+            msg = " ".join(' PSNR bottom[{}]: {}'
+                        .format(*val) for val in enumerate(avg_psnr))
+            
+            self.log.info(msg)
+            if len(l_psnr) == 2:
+                self.log.info(" iPSNR: {}".format(avg_psnr[0] - avg_psnr[1]))
         
-        if self.vis and self.iteration % self.step == 0:    
-            vis_param = {"Label": crop_label[0],
-                         "CNN data": bottom[self.i_cnn_data].data[0]}
-            if len(bottom) >= 3:
-                vis_param["Data"] = bottom[self.i_data].data[0]
-          
+        if self.vis and self.iteration % self.step == 0:
+            vis_param = {}
+            for i_bot in xrange(len(bottom)):
+                vis_param["bottom[{}]".format(i_bot)] = cropped_blobs[i_bot][0]
+           
             self.visualize(**vis_param)
         
         self.iteration += 1
@@ -225,24 +224,36 @@ class PyEuclideanLossLayer(caffe.Layer):
             else:
                 bottom[i].diff[...] = sign * self.diff / bottom[i].num
     
+    def crop_all(self, bottom):
+        cropped = []
+        for i_bot in xrange(len(bottom)):
+            cropped.append(self.crop(bottom[i_bot], self.borders[i_bot]))
+        return cropped
+    
     def crop(self, blob, crop_size):
         (x_border, y_border) = crop_size
         crop_blob = blob.data[:, :, x_border:-x_border or None,
                               y_border:-y_border or None]
         return crop_blob
-  
-    def psnr(self, diff):
-        SSD = np.sum(diff**2)
-        MSE = SSD / float(diff.size)
-        max_i = 255.*self.normalize
-        PSNR = 10 * np.log10( max_i**2 / MSE)
-        return PSNR, SSD
-
-    def appendPSNR(self, PSNR, psnr_buf):
-        psnr_buf.append(PSNR)
-        if len(psnr_buf) > self.historySize:
-            psnr_buf = psnr_buf[1:]
-      
+    
+    def psnr(self, blobs):
+        results = []
+        diffs = []
+        ssds = []
+        for i_input in xrange(len(blobs)-1):
+            diff = (blobs[i_input] - blobs[-1])\
+                    .astype(dtype=np.float64)
+            ssd = (diff**2).sum()
+            mse = ssd / float(diff.size)
+            if mse == 0:
+                results.append(np.nan)
+            else:
+                psnr = 10 * np.log10(self.max**2 / mse)
+                results.append(psnr)
+                diffs.append(diff)
+                ssds.append(ssd)
+        return results, diffs, ssds
+     
     def visualize(self, **kwargs):
 #         img_pair = []
         for key, value in kwargs.items():
@@ -255,102 +266,3 @@ class PyEuclideanLossLayer(caffe.Layer):
             cv2.imshow(key, preview_resized/255.)
 #         cv2.imshow(key, np.vstack(img_pair)/255.)
         cv2.waitKey(5)     
-
-class CroppedEuclideanLossVisLayer(caffe.Layer):
-    """
-    Compute the Euclidean Loss on aligned image in the same manner as the C++ EuclideanLossLayer.
-    """
-
-    def setup(self, bottom, top):
-        # check input pair
-        if len(bottom) < 2:
-            raise Exception("Needs two inputs to compute distance. Possibly more to show.")
-
-        self.historySize = 200
-        self.PSNR = []
-        self.IPSNR = []
-
-        self.options = dict([tuple(s.split(':')) for s in self.param_str.split()])
-
-    def crop(self, blob):
-        crop = blob
-        b2 = (crop.shape[2] - self.shape[2]) // 2
-        if b2 > 0:
-            crop = crop[:, :, b2:-b2, :]
-        b3 = (crop.shape[3] - self.shape[3]) // 2
-        if b3 > 0:
-            crop = crop[:, :, :, b3:-b3]
-        return crop
-
-    def reshape(self, bottom, top):
-
-        # check input dimensions match
-        self.shape = [x for x in bottom[0].data.shape]
-        for bID in range(1, len(bottom)):
-            if self.shape[0] != bottom[bID].shape[0]:
-                raise Exception("Number of images in bottom blobs must "\
-                                " match. Got %d and %d" % \
-                                 (self.shape[0], bottom[bID].shape[0]))
-            if self.shape[1] != bottom[bID].shape[1]:
-                raise Exception("Number of channels in bottom blobs "\
-                                " must match. Got %d and %d" %\
-                                (self.shape[1], bottom[bID].shape[1]))
-
-            self.shape[2] = min(self.shape[2], bottom[bID].shape[2])
-            self.shape[3] = min(self.shape[3], bottom[bID].shape[3])
-
-        # size of difference is the same as of the first input
-        self.diff = np.zeros(self.shape, dtype=np.float32)
-        # loss output is scalar
-        top[0].reshape(1)
-
-
-    def computePSNR(self, diff):
-        SSD = np.sum(diff ** 2)
-        MSE = SSD / diff.size
-        PSNR = 10 * np.log10(255. / MSE)
-        return PSNR, SSD
-
-
-    def forward(self, bottom, top):
-        if 'show' in self.options:
-            for bID in range(len(bottom)):
-                img = self.crop(bottom[bID].data)[0, :, :, :]
-                img = img.transpose([1, 2, 0])
-                cv2.imshow('bottom%d' % bID,
-                           cv2.resize(img + 0.5, (0, 0), fx=3, fy=3))
-            cv2.waitKey(int(self.options['show']))
-
-        # crop bottom[1] to match bottom[0]
-        croppedTruth = self.crop(bottom[1].data)
-
-        self.diff = (bottom[0].data - croppedTruth).astype(np.float64)
-        PSNR, SSD = self.computePSNR(self.diff)
-        top[0].data[...] = SSD / bottom[0].num / 2.
-
-        self.PSNR.append(PSNR)
-        if len(self.PSNR) > self.historySize:
-            self.PSNR = self.PSNR[1:]
-        print("PSNR: {}".format(reduce(lambda x, y: x + y, self.PSNR) /
-        len(self.PSNR)), file=sys.stderr)
-
-        if len(bottom) >= 3:
-            croppedReference = self.crop(bottom[2].data)
-            diffRef = (croppedTruth - croppedReference).astype(np.float64)
-            PSNR2, SSD = self.computePSNR(diffRef)
-            self.IPSNR.append(PSNR - PSNR2)
-            if len(self.IPSNR) > self.historySize:
-                self.IPSNR = self.IPSNR[1:]
-            print("IPSNR: {}".format(reduce(lambda x, y: x + y, self.IPSNR) / 
-            len(self.IPSNR), file=sys.stderr))
-
-
-    def backward(self, top, propagate_down, bottom):
-        i = 0
-        if not propagate_down[i]:
-            return
-        if i == 0:
-            sign = 1
-        else:
-            sign = -1
-        bottom[i].diff[...] = sign * self.diff / bottom[i].num

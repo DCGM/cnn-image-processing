@@ -3,14 +3,13 @@ from __future__ import division
 
 import numpy as np
 import caffe
-import logging
 
 class PyAddL(caffe.Layer):
     """A layer that compute bottom[0].data + bottom[1].data"""
     
     def setup(self, bottom, top):
         if len(bottom) != 2 :
-            raise Exception("PySubL has to have 2 inputs.")
+            raise Exception("PyAddL has to have 2 inputs.")
         self.i_data = 0
         self.i_label = 1
         # Compute the border

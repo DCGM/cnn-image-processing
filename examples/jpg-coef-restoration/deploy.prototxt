@@ -73,9 +73,9 @@ layer { type: 'Python' name: 'ADD'
 }
 
 layer { type: 'Python' name: 'LOSS'
-        top: 'loss' bottom: 'reconstruction' bottom: 'label' bottom: 'jpg'
+        top: 'loss' bottom: 'reconstruction' bottom: 'jpg' bottom: 'label'
         python_param { module: 'cnn_image_processing' layer: 'PyEuclideanLossLayer'
-                       param_str: "pixel_norm: True, print: True, print_iter: 10, vis: True, vis_scale: 2, vis_mean: 128, vis_normalize: 0.004"
+                       param_str: "pixel_norm: True, psnr_max: 1.02, print: True, print_iter: 10, vis: True, vis_scale: 2, vis_mean: 128, vis_normalize: 0.004"
         }
         loss_weight: 1
 }

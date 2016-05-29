@@ -45,8 +45,7 @@ class PyCropL(caffe.Layer):
         """
         ToDo realy pass only the i_data?
         """
-        pad_params=((0,0),(0,0),
-                    (self.borders,self.borders),(self.borders,self.borders))
+        pad_params=((0,0),(0,0), self.borders, self.borders)
         bottom[self.i_data].diff[...] = np.pad(top[0].diff, pad_params,
                                                mode='constant',
                                                constant_values=(0,0))
