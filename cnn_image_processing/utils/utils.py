@@ -6,14 +6,14 @@ Created on Apr 11, 2016
 '''
 from __future__ import print_function
 
-# import threading
+import numpy as np
 import cv2
 
 def decode_dct(coefs):
     """
-    Compute the inverse dct of the coefs.
+    Decodes the dct coefs into image.
     Coefs is the x * y * 64 NDarray where 1*1*64 is one block of coefficients
-    equivalent to the 8*8 image pixels.
+    equivalent to the 8*8*1 image pixels.
     """
 #     coefs_shape = coefs.transpose()
     img = np.zeros([ dim * 8 for dim in coefs.shape[0:2]], dtype=np.double)
@@ -26,4 +26,4 @@ def decode_dct(coefs):
                 cv2.idct(coefs[y_coef, x_coef].reshape([8,8])) * 1024
 
     img += 128
-    return img
+    return np.expand_dims(img, axis=2)
