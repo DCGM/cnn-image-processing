@@ -75,7 +75,7 @@ class PyVisLayer(caffe.Layer):
       
     def visualize(self, **kwargs):
         for key, value in kwargs.items():
-            img = value.transpose(1, 2, 0) / self.normalize
+            img = value.transpose(1, 2, 0) / self.norm # [y x z]
             img += self.mean
             preview_resized = cv2.resize(img, (0, 0), fx=self.scale,
                                          fy=self.scale)

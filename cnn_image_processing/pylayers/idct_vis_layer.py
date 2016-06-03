@@ -48,7 +48,7 @@ class PyDCTVisL(caffe.Layer):
                 top[i_top].reshape(1)
 
     def forward(self, bottom, top):
-        img = decode_dct( np.transpose(bottom[0].data[0], [1,2,0]) )
+        img = decode_dct( np.transpose(bottom[0].data[0], [1,2,0]) ) # [y x z]
         viz_param = {self.name: img}
         self.visualize(**viz_param)
         

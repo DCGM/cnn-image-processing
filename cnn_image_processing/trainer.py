@@ -157,7 +157,7 @@ class Trainer(multiprocessing.Process):
             if i_batch < self.batch_size:
                 for packet_item in packet:
                     key, packet_data = packet_item.items()[0]
-                    packet_data = packet_data.transpose([2, 0, 1])
+                    packet_data = packet_data.transpose([2, 0, 1]) # [z y x]
                     solver.net.blobs[key].data[i_batch][...] = packet_data
                 i_batch += 1
                 continue

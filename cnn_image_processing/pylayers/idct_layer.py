@@ -37,8 +37,8 @@ class PyIDCTL(caffe.Layer):
 
     def forward(self, bottom, top):
         for i_data in xrange(len(bottom[0].data)):
-            coefs = np.transpose(bottom[0].data[i_data], [1,2,0])
-            top[0].data[i_data, ...] = decode_dct(coefs).transpose([2,1,0])
+            coefs = np.transpose(bottom[0].data[i_data], [1,2,0]) #[y x z]
+            top[0].data[i_data, ...] = decode_dct(coefs).transpose([2,0,1]) #[z y x]
         
     def backward(self, top, propagate_down, bottom):
         for i_diff in xrange(len(top)):
