@@ -33,28 +33,52 @@ class PyVisLayer(caffe.Layer):
     """
     
     def setup(self, bottom, top):
-        pass
+        self.dict_param = dict((key.strip(), val.strip()) for key, val in
+                               (item.split(':') for item in
+                                self.param_str.split(',')))
+        
+        if 'scale' in self.dict_param:
+            self.scale = float(self.dict_param['scale'])
+        else:
+            self.scale = 1
+         
+        if 'mean' in self.dict_param:
+            self.mean = float(self.dict_param['mean'])
+        else:
+            self.mean = 0
+         
+        if 'norm' in self.dict_param:
+            self.norm = float(self.dict_param['norm'])
+        else:
+            self.norm = 1
+        
+        if 'name' in self.dict_param:
+            self.name = str(self.dict_param['name'])
+        else:
+            self.name = "Vis"
 
     def reshape(self, bottom, top):        
             for i_top in xrange(len(top)):
                 top[i_top].reshape(1)
 
-    def forward(self, bottom, top):    
-        pass
+    def forward(self, bottom, top):
+        vis_data = bottom[0].data[0]
+        viz_param = {self.name: vis_data}
+        self.visualize(**viz_param)
+        
+        for i_data in xrange(len(top)):
+            top[i_data].data[...] = bottom[i_data].data
 
     def backward(self, top, propagate_down, bottom):
-        pass
-    
+        for i_diff in xrange(len(top)):
+            bottom[i_diff].diff[...] = top[i_diff].diff
       
     def visualize(self, **kwargs):
-#         img_pair = []
         for key, value in kwargs.items():
             img = value.transpose(1, 2, 0) / self.normalize
-            img += self.vis_mean
-#             img_pair.append(img)
-            preview_resized = cv2.resize(img, (0, 0), fx=self.vis_scale,
-                                         fy=self.vis_scale)
+            img += self.mean
+            preview_resized = cv2.resize(img, (0, 0), fx=self.scale,
+                                         fy=self.scale)
             
             cv2.imshow(key, preview_resized/255.)
-#         cv2.imshow(key, np.vstack(img_pair)/255.)
         cv2.waitKey(5)   
