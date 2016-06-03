@@ -51,9 +51,13 @@ class PyDCTVisL(caffe.Layer):
         img = decode_dct( np.transpose(bottom[0].data[0], [1,2,0]) )
         viz_param = {self.name: img}
         self.visualize(**viz_param)
+        
+        for i_data in xrange(len(top)):
+            top[i_data].data[...] = bottom[i_data].data
 
     def backward(self, top, propagate_down, bottom):
-        pass 
+        for i_diff in xrange(len(top)):
+            bottom[i_diff].diff[...] = top[i_diff].diff
 
     def visualize(self, **kwargs):
 #         img_pair = []
