@@ -16,7 +16,7 @@ Processing:
 Trainer:
   batch_size: 12
   max_iter: 250000
-  caffe_mode: 'cpu'
+  caffe_mode: 'gpu'
   gpu_id: 0
   caffe_solverstate:
   caffe_weights: 
