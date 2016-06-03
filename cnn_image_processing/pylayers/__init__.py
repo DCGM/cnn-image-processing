@@ -5,3 +5,5 @@ from .vis_layer import *
 from .add_layer import *
 from .sub_layer import *
 from .idct_vis_layer import *
+from .idct_layer import *
+
