@@ -18,13 +18,14 @@ class Trainer(multiprocessing.Process):
     Trainer call the caffe solver - train and prepare the input
     cnn input batches.
     """
-    def __init__(self, in_queue=None, solver_file=None, max_iter=100,
-                 batch_size=64, buffer_size=256, caffe_weights=None,
-                 caffe_solverstate=None, caffe_mode=None, gpu_id=0):
+    def __init__(self, train_in_queue=None, test_in_queue=None, solver_file=None, max_iter=100,
+                 test_iter=100, batch_size=64, buffer_size=256,
+                 caffe_weights=None, caffe_solverstate=None, caffe_mode=None,
+                 gpu_id=0):
         """
         Trainer constructor
         Args:
-          in_queue: The queue the data are read from.
+          train_in_queue: The queue the data are read from.
           solver: initialized Caffe solver.
           max_iter: number of train iterations.
           batch_size: Size of the train batch data.
@@ -36,9 +37,11 @@ class Trainer(multiprocessing.Process):
         """
         super(Trainer, self).__init__()
         self.daemon = True  # Kill yourself if parent dies
-        self.in_queue = in_queue
+        self.in_queue = train_in_queue
+        self.test_in_queue = test_in_queue
         self.solver_file = solver_file
         self.max_iter = max_iter
+        self.test_iter = test_iter
         self.batch_size = batch_size
         self.buffer = Queue.Queue(buffer_size)
         self.caffe_weights = caffe_weights
@@ -68,13 +71,19 @@ class Trainer(multiprocessing.Process):
             caffe.set_device(self.gpu_id)
         else:
             caffe.set_mode_cpu()
-        print("SOLVER FILE: {}".format(solver_file))
-        solver = caffe.SGDSolver(solver_file)
+        self.log.info("SOLVER FILE: {}".format(solver_file))
+        solver = caffe.get_solver(solver_file)
         
         if self.caffe_solverstate is not None:
             solver.restore(self.caffe_solverstate)
+            self.log.info(" Loaded solverstate: {}"
+                          .format(self.caffe_solverstate))
         elif self.caffe_weights is not None:
             solver.net.copy_from(self.caffe_weights)
+            self.log.info(" Loaded weights: {}".format(self.caffe_weights))
+        else:
+            self.log.info("Net - centering the parameters.")
+            self.center_initialization(solver.net)
         
         for key, shape in data_shapes.items():
             solver.net.blobs[key].reshape(*shape)
@@ -85,8 +94,6 @@ class Trainer(multiprocessing.Process):
                 test_net.blobs[key].reshape(*shape)
             test_net.reshape()
 
-        self.log.info("Net - centering the parameters.")
-        self.center_initialization(solver.net)
         self.stat = ActivationStat(solver.net)
         return solver
 
@@ -115,7 +122,78 @@ class Trainer(multiprocessing.Process):
             i_batch = 0
             fetch_start = time.clock()
 
+    def fetch_batch(self, in_queue, net):
+        """
+        Fetch input with data from in_queue of n = self.batch_size data
+        """
+        i_batch = 0
+        start_fetch = time.clock()  
+        for packets in iter(in_queue.get, None):
+            if i_batch < self.batch_size:
+                for packet in packets:
+                    key = packet['label']
+                    packet_data = packet['data'].transpose([2, 0, 1]) # [z y x]
+                    net.blobs[key].data[i_batch][...] = packet_data
+            
+                i_batch += 1
+            else:
+                break
+        
+        stop_fetch = time.clock()
+        self.log.debug(" Fetch data time: {}".format(stop_fetch-start_fetch))
+
+        return True if i_batch == self.batch_size else False
+    
+    def test(self, net):
+        self.log.info("Start phase Test.")
+        for _ in xrange(10):
+            self.fetch_batch(self.in_queue, net)
+            net.forward()
+        
+        self.log.info("End phase Test.")
+    
     def run(self):
+        # Get the first packet in the stream to find out the proper shapes
+        in_packets = self.in_queue.get(block=True, timeout=None)
+        dict_shapes = {}
+        for packet in in_packets:
+            label = packet['label']
+            dim = packet['data'].shape
+            blob_shape = [self.batch_size, dim[2], dim[0], dim[1]]
+            dict_shapes[label] = blob_shape    
+
+        # Initialize the caffe solver and reshape the network
+        solver = self.init_caffe(self.solver_file, dict_shapes)
+        
+        continue_flag = True
+        while(continue_flag):
+            start_iteration = time.clock()
+            continue_flag = self.fetch_batch(self.in_queue, solver.net)
+
+            start_train = time.clock()
+            solver.step(1)
+            stop_train = time.clock()
+            self.log.debug("Train time: {}".format(stop_train-start_train))
+            
+             
+            if solver.iter % 50 == 0:
+                self.stat.add_history(solver.net)
+                self.stat.print_stats()
+       
+            
+            self.log.debug("Iteration time: {}"
+                           .format(stop_train-start_iteration))
+            
+            if solver.iter % self.test_iter == 0 and self.test_in_queue != None:
+                self.test(solver.test_nets[0])
+            
+            self.log.debug("Iteration: {}".format(solver.iter))
+            if solver.iter == self.max_iter:
+                break
+        
+        self.log.info("end.")
+            
+    def run2(self):
         # Get the first packet in the stream to find out the proper shapes
         batch_n = self.batch_size
         in_packet = self.in_queue.get(block=True, timeout=None)

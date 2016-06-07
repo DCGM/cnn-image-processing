@@ -17,12 +17,13 @@ class ImageReader(object):
     def __init__(self):
         self.log = logging.getLogger(__name__ + ".ImageReader")
 
-    def read(self, path):
+    def read(self, packet):
         """
-        Loads and returns the image on path.
+        Loads and returns the image of path.
         """
         img = None
         try:
+            path = packet['path']
             img = cv2.imread(path, -1).astype(np.float)
             if img is None:
                 self.log.error("Could not read image: {}".format(path))
@@ -33,7 +34,8 @@ class ImageReader(object):
             self.log.error("UNKNOWN: {}".format(sys.exc_info()[0]))
         if len(img.shape) == 2:
             img = img.reshape(img.shape[0],img.shape[1],1)
-        return img
+        packet['data'] = img
+        return packet
     
     def __call__(self, path):
         """
@@ -49,19 +51,18 @@ class ImageX8Reader(ImageReader):
     """
     log = logging.getLogger(__name__ + ".ImageX8Reader")
 
-    @classmethod
-    def read(cls, path):
+    def read(self, packet):
         """
         Loads and returns the cropped image size divideable by 8.
         """
-        img = super(ImageX8Reader, cls).read(path)
-        if img != None:
-            return ImageX8Reader.crop(img)
+        packet = super(ImageX8Reader, self).read(packet)
+        if packet != None:
+            packet['data'] = self.crop(packet['data'])
+            return packet
         else:
-            return img
+            return None
 
-    @classmethod
-    def crop(cls, img):
+    def crop(self, img):
         """
         Crop the img to be 8x divisible.
         """
@@ -77,10 +78,11 @@ class CoefNpyTxtReader(object):
         self.n_channels = n_channels
         self.log = logging.getLogger(__name__ + ".CoefNpyTxtReader")
 
-    def read(self, path):
+    def read(self, packet):
         """
         Reads the numpy txt array file and returns the numpy array.
         """
+        path = packet['path']
         data_array = None
         try:
             data_array = np.loadtxt(fname=path, dtype=np.float)
@@ -92,10 +94,11 @@ class CoefNpyTxtReader(object):
         except IOError as ioe:
             self.log.error("IOError: {}".format(str(ioe)))
 
-        return data_array
+        packet['data'] = data_array
+        return packet
     
-    def __call__(self, path):
+    def __call__(self, packet):
         """
         Return the JPEG coefs stored in the txt file in path.
         """
-        return self.read(path)
+        return self.read(packet)

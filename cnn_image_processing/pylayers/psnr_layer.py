@@ -47,7 +47,6 @@ class PyPSNRL(caffe.Layer):
             self.print_step = 50
         
         self.iterations = 0
-        print(self.history_size)
         self.psnr_buffers = [RoundBuffer(max_size=self.history_size)
                              for _ in xrange(len(bottom)-1)]
        

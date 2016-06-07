@@ -19,12 +19,12 @@ class DataProcessing(multiprocessing.Process):
       The buffer is shifted after t_filters processed.
     """
 
-    def __init__(self, in_queue=None, out_queue=None, buffer_size=100,
+    def __init__(self, train_in_queue=None, out_queue=None, buffer_size=100,
                 t_filters=None, samples=1, RNG=None):
         """
         DataProcessing constructor
         Args:
-          in_queue: The queue the data are read from.
+          train_in_queue: The queue the data are read from.
           queue_size: Size of the output queue the processed data are
                      pushed to.
           buffer_size: Size of the buffer of read data to process.
@@ -36,7 +36,7 @@ class DataProcessing(multiprocessing.Process):
         """
         super(DataProcessing, self).__init__()
         self.daemon = True  # Kill yourself if parent dies
-        self.in_queue = in_queue
+        self.in_queue = train_in_queue
         self.out_queue = out_queue
         self.buffer_size = buffer_size
         self.t_filters = t_filters
@@ -50,8 +50,8 @@ class DataProcessing(multiprocessing.Process):
         Loads the buffer.
         """
         self.log.info("Initializing - loading buffer.")
-        for data in iter(self.in_queue.get, None):
-            self.buffer.append_round(data)
+        for packets in iter(self.in_queue.get, None):
+            self.buffer.append_round(packets)
             if self.buffer.size == self.buffer_size:
                 break
 
@@ -62,28 +62,28 @@ class DataProcessing(multiprocessing.Process):
         """
         for _ in xrange(self.samples):
             i_buffer = self.rng.randint(0, self.buffer.size)
-            rn_data = self.buffer[i_buffer]
+            rn_packets = self.buffer[i_buffer]
             for t_filter in self.t_filters:
-                rn_data = t_filter(rn_data)
+                rn_packets = t_filter(rn_packets)
             
-            if rn_data != None:
-                self.out_queue.put(rn_data)
+            if rn_packets != None:
+                self.out_queue.put(rn_packets)
 
     def run(self):
         self.log.info("started.")
         # Load the buffer
         self.load_buffer()
         # Fetch from the queue
-        for data in iter(self.in_queue.get, None):
+        for packets in iter(self.in_queue.get, None):
             self.log.debug("Received data.")
             start = time.clock()
             self.run_xtimes_tfilters()
             t_dif = time.clock() - start
             self.log.debug("Processing Time: {}".format(t_dif))
-            self.buffer.append_round(data)
+            self.buffer.append_round(packets)
         # Flush out the buffer
         while self.buffer.size != 0:
-            self.run_treaders()
+            self.run_xtimes_tfilters()
             self.buffer.pop()
 
         self.log.info("end.")

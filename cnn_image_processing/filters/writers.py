@@ -14,19 +14,20 @@ class ImageWriter(object):
     Write images.
     """
 
-    def __init__(self, d_path=None):
+    def __init__(self, d_path=None, params=None):
         """
         ImageWriter constructor
         Args:
           d_path: directory path where write the image.
         """
         self.d_path = d_path if d_path != None else os.getcwd()
+        self.params = params
         self.log = logging.getLogger(__name__ + ".ImageWriter")
 
     def __call__(self, file_name, img):
 
         img_name = os.path.join(self.d_path, file_name)
-        cv2.imwrite(img_name, img)
+        cv2.imwrite(img_name, img, self.params)
 
 
 class CoefNpyTxtWriter(object):

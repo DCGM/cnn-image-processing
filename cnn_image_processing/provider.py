@@ -64,14 +64,16 @@ class DataProvider(multiprocessing.Process):
 
         with open(file_list) as flist:
             for line in flist:
-                t_data = line
+                packets = [{'path': path.strip()} for path in line.split()]
                 try:
-                    t_data = self.run_treaders(line.split(), t_readers)
+                    packets = self.run_treaders(packets, t_readers)
                 except ValueError as val_e:
                     self.log.error(val_e)
                     continue
                 self.log.debug("Paths: {}".format(line[0:-1]))
-                self.out_queue.put(t_data)
+                self.out_queue.put(packets)
+        
+        self.log.info("End of file list: {}".format(self.file_list))
 
     def run(self):
         """

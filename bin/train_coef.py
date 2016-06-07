@@ -24,8 +24,10 @@ def main(argv):
                         type=str, required=True )
     parser.add_argument("-s", "--solver-file", help="Solver file", type=str,
                          required=True)
-    parser.add_argument("-f", "--file-list", help="File list", type=str,
-                         required=True)
+    parser.add_argument("-l", "--train-list", help="Training file list",
+                        type=str, required=True)
+    parser.add_argument("-tl", "--test-list", help="Testing file list",
+                        type=str, required=False, default=None)
     parser.add_argument("-v", "--verbose", help="Set the verbose mode.",
                         action="store_true")
     
@@ -45,7 +47,8 @@ def main(argv):
         
     config_file = args.conf_file
     solver_file = args.solver_file
-    data_file = args.file_list
+    train_list = args.train_list
+    test_list = args.test_list
 
     # Open, parse and print the configuration file
     with open(config_file) as cf_file:
@@ -53,23 +56,41 @@ def main(argv):
         print (yaml.dump(config))
     
     # Create communication queues
-    readers_queue = multiprocessing.Queue(64)
-    data_queue = multiprocessing.Queue(1024)
+    train_readers_queue = multiprocessing.Queue(64)
+    train_data_queue = multiprocessing.Queue(1024)
+ 
     
     # Create and initialize main objects
     creator = cip.Creator(config=config)
     
     d_provider = creator.create_provider()
-    d_provider.file_list = data_file
-    d_provider.out_queue = readers_queue
+    d_provider.file_list = train_list
+    d_provider.out_queue = train_readers_queue
     
     d_processing = creator.create_processing()
-    d_processing.in_queue = readers_queue
-    d_processing.out_queue = data_queue
-
+    d_processing.in_queue = train_readers_queue
+    d_processing.out_queue = train_data_queue
+  
     proc_trainer = creator.create_training()
-    proc_trainer.in_queue=data_queue
+    proc_trainer.in_queue=train_data_queue
     proc_trainer.solver_file = solver_file
+
+    if args.test_list != None:
+        test_readers_queue = multiprocessing.Queue(64)
+        test_data_queue = multiprocessing.Queue(1024)
+        
+        test_provider = creator.create_provider()
+        test_provider.file_list = test_list
+        test_provider.out_queue = test_readers_queue 
+        
+        test_processing = creator.create_processing()
+        test_processing.in_queue = test_readers_queue
+        test_processing.out_queue = test_data_queue
+        proc_trainer.test_in_queue = test_data_queue
+        
+        test_provider.start()
+        test_processing.start()
+
 
     # Run the whole magic
     d_provider.start()

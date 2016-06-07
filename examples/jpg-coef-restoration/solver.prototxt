@@ -11,5 +11,5 @@ weight_decay: 0.00005
 snapshot: 250000
 snapshot_prefix: "net"
 solver_mode: GPU
-debug_info: 1
+debug_info: 0
 

@@ -19,101 +19,38 @@ class TFilter(object):
         else:
             return 0 
         
-    def run(self, data):
+    def run(self, packets):
         """
-        Runs all the filters with input data.
+        Runs all the filters with input packets.
         Args:
-            data: list or tuple of data - same length as filters.
+            packets: list or tuple of packets - same length as filters.
         """
-        assert len(self.filters) == len(data)
+        assert len(self.filters) == len(packets)
         flag = True
         l_result = [None]*len(self.filters)
-        for i_ftr, ftr in enumerate(self.filters):
-            l_result[i_ftr] = ftr(data[i_ftr])
-            flag &= l_result[i_ftr] is not None
+        for i_filter, pfilter in enumerate(self.filters):
+            l_result[i_filter] = pfilter(packets[i_filter])
+            flag &= l_result[i_filter] is not None
         
-        if flag:   
+        if flag:
             return tuple(l_result)
         else:
             return None
     
-    def __call__(self, data):
-        return self.run(data)
+    def __call__(self, packets):
+        return self.run(packets)
 
 class Pass(object):
     "Dummy object passing the data."
     
-    def run(self, data):
+    def run(self, packet):
         """
-        Return data.
+        Return packet.
         """
-        return data
+        return packet
     
-    def __call__(self, data):
-        return data
-
-class MotionBlurPSF:
-    """
-    ToDo modify the code to fit into the Filter like usage
-    """
-    def __init__(self, slope_deg, length):
-        self.slope_deg = slope_deg
-        self.length = length
-    
-    def generate(self, RNG, slope_deg = None, length = None):
-        """
-        Compute the motion blur PSF (Point Spread Function).
-        
-        Note
-        -----
-        The PSF has always the odd size.
-        
-        Parameters
-        ----------
-        RNG : numpy.random.RandomState() object
-            Random state for sampling the slope_deg
-        slope_deg : numpy.array
-            the half open [low, high) interval of slope of the motion vector
-            related to x axe in degrees to uniformly sample from
-        length : numpy.array
-            the half open [low, high) interval of motion vector length in pixels
-            to uniformly sample from
-        
-        Returns
-        -------
-        numpy.ndarray
-            The computed PSF kernel
-        float
-            sampled slope deg
-        float
-            sampled length
-        """
-        slope_deg = self.slope_deg if slope_deg is None else slope_deg
-        length = self.length if length is None else length
-        supersample_coef = 100
-        supersample_thickness = 100 / 10
-        sampled_slope_deg = RNG.uniform(low=slope_deg[0], high=slope_deg [1])
-        sampled_length = RNG.uniform(low=length[0], high=length [1])
-        
-        if(sampled_length == 0.0):
-            return np.ones((1, 1), dtype=float)
-        
-        int_sampled_length = np.ceil(sampled_length).astype(np.int)
-        kernel_size_odd = int_sampled_length + 1 if(int_sampled_length % 2 == 0) else int_sampled_length
-        int_sup_sampled_length = np.rint(supersample_coef * sampled_length).astype(np.int)
-        kernel_sup_size_odd = int(int_sup_sampled_length + 1 if (int_sup_sampled_length % 2 == 0) else int_sup_sampled_length)
-        
-        kernel_supersample = np.zeros([kernel_sup_size_odd, kernel_sup_size_odd], dtype=np.float)
-        v_center_sup_kernel = (int(kernel_sup_size_odd / 2.), int(kernel_sup_size_odd / 2.))
-        cv2.line(kernel_supersample, (0, v_center_sup_kernel[1]), (kernel_sup_size_odd - 1, v_center_sup_kernel[1]), color=(1), thickness=int(supersample_thickness * sampled_length))
-        rot_mat = cv2.getRotationMatrix2D(center=v_center_sup_kernel, angle=sampled_slope_deg, scale=1)
-        
-        psf = cv2.warpAffine(src=kernel_supersample, M=rot_mat, dsize=kernel_supersample.shape)
-        psf = cv2.resize(psf, dsize=(kernel_size_odd, kernel_size_odd), fx=0, fy=0, interpolation=cv2.INTER_AREA)
-        
-        if(psf.shape != (1, 1)):
-            psf = psf / psf.sum()
-        return psf, sampled_slope_deg, sampled_length
+    def __call__(self, packet):
+        return packet
 
 class TCropCoef8ImgFilter(object):
     """
@@ -132,23 +69,23 @@ class TCropCoef8ImgFilter(object):
         self.filters = filters
         self.size = size
   
-    def run(self, data):
+    def run(self, packets):
         """
         Generates the crop pivot and call all the crop filters in self.filters
         Args:
-            data: The data to be cropped from
+            data: The packets to be cropped from
         """
-        assert len(data) == len(self.filters)
+        assert len(packets) == len(self.filters)
         # always ommit the last row and column in the coef data
-        shape = np.asarray(data[0].shape[0:2])-1
+        shape = np.asarray(packets[0]['data'].shape[0:2])-1
         pivot = [ self.rng.randint(0, dim - self.size) for dim in shape ]
         pivot = np.asarray(pivot)
         size = np.asarray((self.size, self.size))
         
         crops = []
-        for filter_crop, data_item in zip(self.filters, data):
-            crop_data = filter_crop(data_item, pivot, size)
-            crops.append(crop_data)
+        for filter_crop, packet in zip(self.filters, packets):
+            crop_packet = filter_crop(packet, pivot, size)
+            crops.append(crop_packet)
             
         return tuple(crops)
   
@@ -177,7 +114,7 @@ class Crop(object):
         self.scale = scale
         self.scale_pivot = scale_pivot
     
-    def crop(self, data=None, pivot=None, size=None):
+    def crop(self, packet=None, pivot=None, size=None):
         """
         Crop the data with a center pivot and size. The pivot position
         and size may be scaled by the scale and scale_pivot factor.
@@ -193,11 +130,14 @@ class Crop(object):
         p_y, p_x = pivot * self.scale_pivot
         size_y, size_x = (size * self.scale) // 2 # Floor divide op
         
-        cropped_data = data[p_y-size_y:p_y+size_y, p_x-size_x:p_x+size_x]
-        return cropped_data
+        out_packet = {key:val for key, val in packet.items() if key != 'data'}
+        
+        out_packet['data'] = packet['data'][p_y-size_y:p_y+size_y,
+                                            p_x-size_x:p_x+size_x]
+        return out_packet
     
-    def __call__(self, data=None, pivot=None, size=None):
-        return self.crop(data=data, pivot=pivot, size=size)
+    def __call__(self, packet=None, pivot=None, size=None):
+        return self.crop(packet=packet, pivot=pivot, size=size)
 
 class LTCrop(object):
     """
@@ -217,7 +157,7 @@ class LTCrop(object):
         """
         self.scale = scale
     
-    def crop(self, data=None, pivot=None, size=None):
+    def crop(self, packet=None, pivot=None, size=None):
         """
         Crop the data with the top left pivot and size. The pivot position
         and size may be scaled by the scale factor.
@@ -233,11 +173,12 @@ class LTCrop(object):
         p_y, p_x = pivot * self.scale
         size_y, size_x = size * self.scale
         
-        cropped_data = data[p_y:p_y+size_y, p_x:p_x+size_x]
-        return cropped_data
+        out_packet = {key:val for key, val in packet.items() if key != 'data'}
+        out_packet['data'] = packet['data'][p_y:p_y+size_y, p_x:p_x+size_x]
+        return out_packet
     
-    def __call__(self, data=None, pivot=None, size=None):
-        return self.crop(data=data, pivot=pivot, size=size)
+    def __call__(self, packet=None, pivot=None, size=None):
+        return self.crop(packet=packet, pivot=pivot, size=size)
 
 class Label(object):
     """
@@ -252,11 +193,12 @@ class Label(object):
         """
         self.label_name = name
     
-    def label(self, data):
-        return {self.label_name: data}
+    def label(self, packet):
+        packet['label'] = self.label_name
+        return packet
     
-    def __call__(self, data):
-        return self.label(data)
+    def __call__(self, packet):
+        return self.label(packet)
 
 class Mul(object):
     """
@@ -270,11 +212,12 @@ class Mul(object):
         """
         self.val = val
         
-    def mul(self, data):
-        return data*self.val
+    def mul(self, packet):
+        packet['data'] *= self.val
+        return packet
     
-    def __call__(self, data):
-        return self.mul(data)
+    def __call__(self, packet):
+        return self.mul(packet)
 
 class Sub(object):
     """
@@ -283,8 +226,9 @@ class Sub(object):
     def __init__(self, val=0):
         self.val = val
         
-    def sub(self, data):
-        return data - self.val
+    def sub(self, packet):
+        packet['data'] -= self.val
+        return packet
     
-    def __call__(self, data):
-        return self.sub(data)
+    def __call__(self, packet):
+        return self.sub(packet)

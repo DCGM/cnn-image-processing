@@ -8,6 +8,7 @@ import numpy as np
 import caffe
 import logging
 
+from ..utils import code_dct
 from ..utils import decode_dct
 
 module_logger = logging.getLogger(__name__)
@@ -41,5 +42,6 @@ class PyIDCTL(caffe.Layer):
             top[0].data[i_data, ...] = decode_dct(coefs).transpose([2,0,1]) #[z y x]
         
     def backward(self, top, propagate_down, bottom):
-        for i_diff in xrange(len(top)):
-            bottom[i_diff].diff[...] = top[i_diff].diff
+        for i_diff in xrange(len(top[0].diff)):
+            dct_diff = code_dct(top[0].diff[i_diff].transpose(1,2,0)) #[y x z]
+            bottom[0].diff[i_diff][...] = dct_diff.transpose(2,0,1) #[z y x]
