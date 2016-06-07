@@ -60,7 +60,8 @@ class PyPSNRL(caffe.Layer):
     def forward(self, bottom, top):
         l_psnr = self.psnr(bottom)
         for i_val, val in enumerate(l_psnr):
-            self.psnr_buffers[i_val].append_round(val)
+            for psnr_val in val:
+                self.psnr_buffers[i_val].append_round(psnr_val)
         
         if self.iterations % self.print_step == 0: 
             avg_psnr = [sum(val)/val.size for val in self.psnr_buffers]
@@ -88,11 +89,14 @@ class PyPSNRL(caffe.Layer):
         results = []
         for i_input in xrange(len(bottom)-1):
             diff = (bottom[-1].data - bottom[i_input].data).astype(np.float64)
-            ssd = (diff**2).sum()
-            mse = ssd / float(diff.size)
-            if mse == 0:
-                results.append(np.nan)
-            else:
-                psnr = 10 * np.log10(self.max**2 / mse)
-                results.append(psnr)
+            bottom_psnr = []
+            for i_img in xrange(diff.shape[0]):
+                ssd = (diff[i_img]**2).sum()
+                mse = ssd / float(diff[i_img].size)
+                if mse == 0:
+                    bottom_psnr.append(np.nan)
+                else:
+                    psnr = 10 * np.log10(self.max**2 / mse)
+                    bottom_psnr.append(psnr)
+            results.append(bottom_psnr)
         return results

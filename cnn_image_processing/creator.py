@@ -5,16 +5,15 @@ Created on May 27, 2016
 '''
 
 from factory import ObjectFactory
-from provider import DataProvider
-from processing import DataProcessing
+from provider import Provider
+from sampler import Sampler
 from trainer import Trainer
 
 class Creator(object):
     """
     Create the readers and filters according the configuration file.
     """
-    def __init__(self, config):
-        self.config = config
+    def __init__(self):
         self.f_create = ObjectFactory.create_object
     
     def parse_filters(self, l_filters):
@@ -53,25 +52,24 @@ class Creator(object):
 
         return tup_filters
 
-    def create_provider(self):
+    def create_provider(self, config):
         """
         Creates provider.
         """
-        tuple_filters = self.parse_tuples(self.config['Provider']['TFilters'])
-        parameters = self.config['Provider']['Parameters']
-        return DataProvider(t_readers=tuple_filters, **parameters)
+        tuple_filters = self.parse_tuples(config['TFilters'])
+        parameters = config['Parameters']
+        return Provider(t_readers=tuple_filters, **parameters)
         
-    def create_processing(self):
+    def create_sampler(self, config):
         """
-        Creates processing
+        Creates sampler
         """
-        tuple_filters = self.parse_tuples(self.config['Processing']
-                                          ['TFilters'])
-        parameters = self.config['Processing']['Parameters']
-        return DataProcessing(t_filters=tuple_filters, **parameters)
+        tuple_filters = self.parse_tuples(config['TFilters'])
+        parameters = config['Parameters']
+        return Sampler(t_filters=tuple_filters, **parameters)
     
-    def create_training(self):
+    def create_trainer(self, config):
         """
         Creates the trainer.
         """
-        return Trainer(**self.config['Trainer'])
+        return Trainer(**config)

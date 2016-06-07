@@ -13,6 +13,10 @@ import cnn_image_processing as cip
 
 LOGGER = logging.getLogger("cnn_image_processing")
 
+PROVIDER_QUEUE_SIZE = 20
+SAMPLE_QUEUE_SIZE = 1024
+
+
 def main(argv):
     '''
     Entry point
@@ -24,9 +28,9 @@ def main(argv):
                         type=str, required=True )
     parser.add_argument("-s", "--solver-file", help="Solver file", type=str,
                          required=True)
-    parser.add_argument("-l", "--train-list", help="Training file list",
+    parser.add_argument("-tr", "--train-list", help="Training file list",
                         type=str, required=True)
-    parser.add_argument("-tl", "--test-list", help="Testing file list",
+    parser.add_argument("-te", "--test-list", help="Testing file list",
                         type=str, required=False, default=None)
     parser.add_argument("-v", "--verbose", help="Set the verbose mode.",
                         action="store_true")
@@ -55,49 +59,49 @@ def main(argv):
         config = yaml.safe_load(cf_file)
         print (yaml.dump(config))
     
-    # Create communication queues
-    train_readers_queue = multiprocessing.Queue(64)
-    train_data_queue = multiprocessing.Queue(1024)
- 
+    creator = cip.Creator()
     
-    # Create and initialize main objects
-    creator = cip.Creator(config=config)
+    trainer = creator.create_trainer(config['Trainer'])
+    trainer.solver_file = solver_file
     
-    d_provider = creator.create_provider()
-    d_provider.file_list = train_list
-    d_provider.out_queue = train_readers_queue
-    
-    d_processing = creator.create_processing()
-    d_processing.in_queue = train_readers_queue
-    d_processing.out_queue = train_data_queue
-  
-    proc_trainer = creator.create_training()
-    proc_trainer.in_queue=train_data_queue
-    proc_trainer.solver_file = solver_file
-
-    if args.test_list != None:
-        test_readers_queue = multiprocessing.Queue(64)
-        test_data_queue = multiprocessing.Queue(1024)
+    if 'Train' in config:
+        train_provider_queue = multiprocessing.Queue(PROVIDER_QUEUE_SIZE)
         
-        test_provider = creator.create_provider()
+        train_provider = creator.create_provider(config['Train']['Provider'])
+        train_provider.file_list = train_list
+        train_provider.out_queue = train_provider_queue
+        train_provider.start()
+    
+        train_samples_queue = multiprocessing.Queue(SAMPLE_QUEUE_SIZE)
+    
+        train_sampler = creator.create_sampler(config['Train']['Sampler'])
+        train_sampler.in_queue = train_provider_queue
+        train_sampler.out_queue = train_samples_queue
+        train_sampler.start()
+        
+        trainer.train_in_queue = train_samples_queue
+    
+    if 'Test' in config:
+        test_provider_queue = multiprocessing.Queue(PROVIDER_QUEUE_SIZE)
+        
+        test_provider = creator.create_provider(config['Test']['Provider'])
         test_provider.file_list = test_list
-        test_provider.out_queue = test_readers_queue 
-        
-        test_processing = creator.create_processing()
-        test_processing.in_queue = test_readers_queue
-        test_processing.out_queue = test_data_queue
-        proc_trainer.test_in_queue = test_data_queue
-        
+        test_provider.out_queue = test_provider_queue
         test_provider.start()
-        test_processing.start()
-
-
-    # Run the whole magic
-    d_provider.start()
-    d_processing.start()
-    proc_trainer.start()
+        
+        test_samples_queue = multiprocessing.Queue(SAMPLE_QUEUE_SIZE)
     
-    proc_trainer.join()
+        test_sampler = creator.create_sampler(config['Test']['Sampler'])
+        test_sampler.in_queue = test_provider_queue
+        test_sampler.out_queue = test_samples_queue
+        test_sampler.start()
+        
+        trainer.test_in_queue = test_samples_queue
+    
+    # Run the trainer
+    
+    trainer.start()
+    trainer.join()
     
 if __name__ == "__main__":
     main(sys.argv)

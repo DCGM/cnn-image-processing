@@ -12,19 +12,19 @@ import time
 import numpy as np
 from .utils import RoundBuffer
 
-class DataProcessing(multiprocessing.Process):
+class Sampler(multiprocessing.Process):
     """
-      DataProcessing reads the data from in_queue, stores them in to the
+      Sampler reads the data from in_queue, stores them in to the
       shift buffer and performs all the t_filters on the data in the buffer.
       The buffer is shifted after t_filters processed.
     """
 
-    def __init__(self, train_in_queue=None, out_queue=None, buffer_size=100,
+    def __init__(self, in_queue=None, out_queue=None, buffer_size=100,
                 t_filters=None, samples=1, RNG=None):
         """
-        DataProcessing constructor
+        Sampler constructor
         Args:
-          train_in_queue: The queue the data are read from.
+          in_queue: The queue the data are read from.
           queue_size: Size of the output queue the processed data are
                      pushed to.
           buffer_size: Size of the buffer of read data to process.
@@ -34,16 +34,16 @@ class DataProcessing(multiprocessing.Process):
                      in buffer.
           RNG: Random state Generator
         """
-        super(DataProcessing, self).__init__()
+        super(Sampler, self).__init__()
         self.daemon = True  # Kill yourself if parent dies
-        self.in_queue = train_in_queue
+        self.in_queue = in_queue
         self.out_queue = out_queue
         self.buffer_size = buffer_size
         self.t_filters = t_filters
         self.samples = samples
         self.buffer = RoundBuffer(max_size=buffer_size)
         self.rng = RNG if RNG != None else np.random.RandomState(5)
-        self.log = logging.getLogger(__name__ + ".DataProcessing")
+        self.log = logging.getLogger(__name__ + ".Sampler")
 
     def load_buffer(self):
         """

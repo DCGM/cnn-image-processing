@@ -1,6 +1,6 @@
 from .creator import *
 from .factory import *
-from .processing import *
+from .sampler import *
 from .provider import *
 from .trainer import *
 from .utils import *

@@ -9,7 +9,7 @@ from __future__ import print_function
 import multiprocessing
 import logging
 
-class DataProvider(multiprocessing.Process):
+class Provider(multiprocessing.Process):
     """
     Exec all the TupleReaders
 
@@ -20,19 +20,19 @@ class DataProvider(multiprocessing.Process):
     def __init__(self, file_list=None, out_queue=None , t_readers=None,
                 loop=False):
         """
-        DataProvider constructor
+        Provider constructor
         Args:
           queue_size: The between process queue max size.
           reader: Reader parsing the elements per line.
           loop: Boolean True read the file in loop, False read the file once.
         """
-        super(DataProvider, self).__init__()
+        super(Provider, self).__init__()
         self.daemon = True  # Kill yourself if parent dies
         self.file_list = file_list
         self.out_queue = out_queue
         self.t_readers = t_readers
         self.loop = loop
-        self.log = logging.getLogger(__name__ + ".DataProvider")
+        self.log = logging.getLogger(__name__ + ".Provider")
 
     def run_treaders(self, t_data, t_readers):
         """
