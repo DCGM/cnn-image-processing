@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import logging
 import sys
+import os.path
 
 class ImageReader(object):
     """
@@ -85,7 +86,16 @@ class CoefNpyTxtReader(object):
         path = packet['path']
         data_array = None
         try:
-            data_array = np.loadtxt(fname=path, dtype=np.float)
+            txtpath = os.path.splitext(path)[0] + ".txt";
+            npzpath = os.path.splitext(path)[0] + ".npz";
+            if   os.path.isfile(npzpath):
+                data_array = np.load(file=npzpath);
+                data_array = data_array[ data_array.keys()[0] ];
+                data_array = data_array.astype(np.float);
+            elif os.path.isfile(txtpath):
+                data_array = np.loadtxt(fname=txtpath, dtype=np.float);
+            else:
+                raise Exception('none of those files exist');
             if data_array is None:
                 self.log.error("Could not read data: {}".format(path))
             data_array = data_array.reshape([self.n_channels, -1,
