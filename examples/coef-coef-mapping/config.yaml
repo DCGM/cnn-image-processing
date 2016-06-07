@@ -1,17 +1,18 @@
-Provider:
-  Parameters: {loop: True}
-  TFilters:
-    - TFilter:
-        Filters: [ CoefNpyTxtReader: {n_channels: 64}, CoefNpyTxtReader: {n_channels: 64} ]
-
-Processing:
-  Parameters: {samples: 500, buffer_size: 50}
-  TFilters:
-    - TCropCoef8ImgFilter:
-        Parameters: {size: 15}
-        Filters: [LTCrop: , LTCrop: ]
-    - TFilter:
-        Filters: [Label: {name: 'coef'}, Label: {name: 'label'} ] 
+Train:
+  Provider:
+    Parameters: {loop: True}
+    TFilters:
+      - TFilter:
+          Filters: [ CoefNpyTxtReader: {n_channels: 64}, CoefNpyTxtReader: {n_channels: 64} ]
+  
+  Sampler:
+    Parameters: {samples: 500, buffer_size: 50}
+    TFilters:
+      - TCropCoef8ImgFilter:
+          Parameters: {size: 15}
+          Filters: [LTCrop: , LTCrop: ]
+      - TFilter:
+          Filters: [Label: {name: 'coef'}, Label: {name: 'label'} ] 
 
 Trainer:
   batch_size: 12

@@ -1,21 +1,22 @@
-Provider:
-  Parameters: {loop: True}
-  TFilters:
-    - TFilter:
-        Filters: [ CoefNpyTxtReader: {n_channels: 64}, ImageReader: , ImageReader: ]
-    - TFilter:
-        Filters: [ Pass: , Sub: {val: 128}, Sub: {val: 128} ]
-    - TFilter:
-        Filters: [ Pass: , Mul: {val: 0.004}, Mul: {val: 0.004} ]
- 
-Processing:
-  Parameters: {samples: 500, buffer_size: 50}
-  TFilters:
-    - TCropCoef8ImgFilter:
-        Parameters: {size: 15}
-        Filters: [LTCrop:, LTCrop: {scale: 8}, LTCrop: {scale: 8} ]
-    - TFilter:
-        Filters: [Label: {name: 'coef'}, Label: {name: 'label'}, Label: {name: 'jpg'}] 
+Train:
+  Provider:
+    Parameters: {loop: True}
+    TFilters:
+      - TFilter:
+          Filters: [ CoefNpyTxtReader: {n_channels: 64}, ImageReader: , ImageReader: ]
+      - TFilter:
+          Filters: [ Pass: , Sub: {val: 128}, Sub: {val: 128} ]
+      - TFilter:
+          Filters: [ Pass: , Mul: {val: 0.004}, Mul: {val: 0.004} ]
+   
+  Sampler:
+    Parameters: {samples: 500, buffer_size: 50}
+    TFilters:
+      - TCropCoef8ImgFilter:
+          Parameters: {size: 15}
+          Filters: [LTCrop:, LTCrop: {scale: 8}, LTCrop: {scale: 8} ]
+      - TFilter:
+          Filters: [Label: {name: 'coef'}, Label: {name: 'label'}, Label: {name: 'jpg'}] 
 
 
 Trainer:
