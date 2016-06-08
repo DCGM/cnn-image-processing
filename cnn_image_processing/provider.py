@@ -73,8 +73,6 @@ class Provider(multiprocessing.Process):
                 self.log.debug("Paths: {}".format(line[0:-1]))
                 self.out_queue.put(packets)
         
-        self.log.info("End of file list: {}".format(self.file_list))
-
     def run(self):
         """
         Call the provide_loop once or in loop acording the loop flag.
@@ -89,5 +87,6 @@ class Provider(multiprocessing.Process):
             while True:
                 self.provide_loop(self.t_readers, self.file_list)
 
+        self.log.info("End of file list: {}".format(self.file_list))
         self.out_queue.put(None)
         self.log.info(" end.")
