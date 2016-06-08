@@ -79,8 +79,8 @@ class Trainer(multiprocessing.Process):
         Initialize the caffe solver.
         """
         if(self.caffe_mode.lower() == "gpu"):
-            caffe.set_mode_gpu()
             caffe.set_device(self.gpu_id)
+            caffe.set_mode_gpu()
         else:
             caffe.set_mode_cpu()
         self.log.info(" SOLVER FILE: {}".format(solver_file))
