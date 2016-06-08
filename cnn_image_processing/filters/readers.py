@@ -15,7 +15,9 @@ class ImageReader(object):
     Reads several types of images via OpenCV.
     Always returns the float 3dim numpy array.
     """
-    def __init__(self):
+    def __init__(self, grayscale=bool):
+        self.load_flag = cv2.IMREAD_GRAYSCALE if grayscale\
+                                              else cv2.IMREAD_UNCHANGED 
         self.log = logging.getLogger(__name__ + ".ImageReader")
 
     def read(self, packet):
@@ -25,7 +27,7 @@ class ImageReader(object):
         img = None
         try:
             path = packet['path']
-            img = cv2.imread(path, -1).astype(np.float)
+            img = cv2.imread(path, self.load_flag).astype(np.float)
             if img is None:
                 self.log.error("Could not read image: {}".format(path))
                 return None
