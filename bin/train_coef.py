@@ -13,10 +13,6 @@ import cnn_image_processing as cip
 
 LOGGER = logging.getLogger("cnn_image_processing")
 
-PROVIDER_QUEUE_SIZE = 20
-SAMPLE_QUEUE_SIZE = 1024
-
-
 def main(argv):
     '''
     Entry point
@@ -59,20 +55,23 @@ def main(argv):
         config = yaml.safe_load(cf_file)
         print (yaml.dump(config))
     
+    provider_queue_size = config['provider_queue_size']
+    sample_queue_size = config['sample_queue_size']
+    
     creator = cip.Creator()
     
     trainer = creator.create_trainer(config['Trainer'])
     trainer.solver_file = solver_file
     
     if 'Train' in config:
-        train_provider_queue = multiprocessing.Queue(PROVIDER_QUEUE_SIZE)
+        train_provider_queue = multiprocessing.Queue(provider_queue_size)
         
         train_provider = creator.create_provider(config['Train']['Provider'])
         train_provider.file_list = train_list
         train_provider.out_queue = train_provider_queue
         train_provider.start()
     
-        train_samples_queue = multiprocessing.Queue(SAMPLE_QUEUE_SIZE)
+        train_samples_queue = multiprocessing.Queue(sample_queue_size)
     
         train_sampler = creator.create_sampler(config['Train']['Sampler'])
         train_sampler.in_queue = train_provider_queue
@@ -82,14 +81,14 @@ def main(argv):
         trainer.train_in_queue = train_samples_queue
     
     if 'Test' in config and test_list is not None:
-        test_provider_queue = multiprocessing.Queue(PROVIDER_QUEUE_SIZE)
+        test_provider_queue = multiprocessing.Queue(provider_queue_size)
         
         test_provider = creator.create_provider(config['Test']['Provider'])
         test_provider.file_list = test_list
         test_provider.out_queue = test_provider_queue
         test_provider.start()
         
-        test_samples_queue = multiprocessing.Queue(SAMPLE_QUEUE_SIZE)
+        test_samples_queue = multiprocessing.Queue(sample_queue_size)
     
         test_sampler = creator.create_sampler(config['Test']['Sampler'])
         test_sampler.in_queue = test_provider_queue
