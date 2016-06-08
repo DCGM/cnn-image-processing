@@ -81,7 +81,7 @@ def main(argv):
         
         trainer.train_in_queue = train_samples_queue
     
-    if 'Test' in config:
+    if 'Test' in config and test_list is not None:
         test_provider_queue = multiprocessing.Queue(PROVIDER_QUEUE_SIZE)
         
         test_provider = creator.create_provider(config['Test']['Provider'])
