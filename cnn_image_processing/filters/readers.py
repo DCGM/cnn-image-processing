@@ -93,9 +93,9 @@ class CoefNpyTxtReader(object):
             if   os.path.isfile(npzpath):
                 data_array = np.load(file=npzpath);
                 data_array = data_array[ data_array.keys()[0] ];
-                data_array = data_array.astype(np.float);
+                data_array = data_array.astype(np.float32);
             elif os.path.isfile(txtpath):
-                data_array = np.loadtxt(fname=txtpath, dtype=np.float);
+                data_array = np.loadtxt(fname=txtpath, dtype=np.float32);
             else:
                 raise Exception('none of those files exist');
             if data_array is None:
