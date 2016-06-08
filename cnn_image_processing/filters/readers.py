@@ -27,7 +27,7 @@ class ImageReader(object):
         img = None
         try:
             path = packet['path']
-            img = cv2.imread(path, self.load_flag).astype(np.float)
+            img = cv2.imread(path, self.load_flag).astype(np.float32)
             if img is None:
                 self.log.error("Could not read image: {}".format(path))
                 return None
