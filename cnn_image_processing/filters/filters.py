@@ -175,6 +175,7 @@ class LTCrop(object):
         
         out_packet = {key:val for key, val in packet.items() if key != 'data'}
         out_packet['data'] = packet['data'][p_y:p_y+size_y, p_x:p_x+size_x]
+        out_packet['pivot'] = [p_y, p_x]
         return out_packet
     
     def __call__(self, packet=None, pivot=None, size=None):
