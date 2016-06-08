@@ -70,21 +70,21 @@ class Sampler(multiprocessing.Process):
                 self.out_queue.put(rn_packets)
 
     def run(self):
-        self.log.info("started.")
+        self.log.info(" started.")
         # Load the buffer
         self.load_buffer()
         # Fetch from the queue
         for packets in iter(self.in_queue.get, None):
-            self.log.debug("Received data.")
+            self.log.debug(" Received data.")
             start = time.clock()
             self.run_xtimes_tfilters()
             t_dif = time.clock() - start
-            self.log.debug("Processing Time: {}".format(t_dif))
+            self.log.debug(" Processing Time: {}".format(t_dif))
             self.buffer.append_round(packets)
         # Flush out the buffer
         while self.buffer.size != 0:
             self.run_xtimes_tfilters()
             self.buffer.pop()
 
-        self.log.info("end.")
+        self.log.info(" end.")
         self.out_queue.put(None)

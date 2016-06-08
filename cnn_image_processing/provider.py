@@ -52,15 +52,15 @@ class Provider(multiprocessing.Process):
           file_list: list of files to process.
         """
         if t_readers is not None:
-            self.log.info("Number of tuple readers: {}".
+            self.log.debug("Number of tuple readers: {}".
                           format(len(self.t_readers)))
-            self.log.info("Number of readers in tuple reader: {}".
+            self.log.debug("Number of readers in tuple reader: {}".
                           format([ reader.size() for reader in
                                   self.t_readers]))
         else:
             self.log.warning("No tuple reader defined.")
         
-        self.log.info("File list: {}".format(self.file_list))
+        self.log.debug("File list: {}".format(self.file_list))
 
         with open(file_list) as flist:
             for line in flist:
@@ -81,7 +81,7 @@ class Provider(multiprocessing.Process):
         run is called by the start method in the separate process.
         """
 #     assert(self.t_readers != None)
-        self.log.info("started.")
+        self.log.info(" started.")
 
         if self.loop is not True:
             self.provide_loop(self.t_readers, self.file_list)
@@ -90,4 +90,4 @@ class Provider(multiprocessing.Process):
                 self.provide_loop(self.t_readers, self.file_list)
 
         self.out_queue.put(None)
-        self.log.info("end.")
+        self.log.info(" end.")
