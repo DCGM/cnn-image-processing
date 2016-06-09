@@ -8,10 +8,12 @@ import Queue
 import multiprocessing
 import caffe
 import logging
-import collections
 import numpy as np
 import cv2
 import time
+from Queue import Empty
+
+from .utils import RoundBuffer
 
 class Trainer(multiprocessing.Process):
     """
@@ -60,6 +62,7 @@ class Trainer(multiprocessing.Process):
         
         self.stat = None
         self.log = logging.getLogger(__name__ + ".Trainer")
+        self.queue_timeout = 25 # timeout wait queue 25 seconds
 
     def center_initialization(self, net, step=1):
         """
@@ -99,7 +102,7 @@ class Trainer(multiprocessing.Process):
         return solver
 
     def get_shapes(self, queue):
-        in_packets = queue.get(block=True, timeout=None)
+        in_packets = queue.get(block=True, timeout=self.queue_timeout)
         dict_shapes = {}
         for packet in in_packets:
             label = packet['label']
@@ -107,8 +110,9 @@ class Trainer(multiprocessing.Process):
             blob_shape = [self.batch_size, dim[2], dim[0], dim[1]]
             dict_shapes[label] = blob_shape
         
-        return dict_shapes  
-
+        return dict_shapes
+        
+        
     def set_shapes(self, net, shapes):
         for key, shape in shapes.items():
             net.blobs[key].reshape(*shape)
@@ -147,6 +151,7 @@ class Trainer(multiprocessing.Process):
         return fetch_flag
     
     def train(self, solver):
+        # ToDo fix the run even zero data is fetched
         fetch_flag = self.fetch_batch(self.train_in_queue, solver.net)
 
         start_train = time.clock()
@@ -158,27 +163,37 @@ class Trainer(multiprocessing.Process):
     
     def run(self):
         # Get the first packet from queues - shapes of data
-        train_shapes = self.get_shapes(self.train_in_queue)
+        try:
+            train_shapes = self.get_shapes(self.train_in_queue)
+        except Empty:
+            self.log.error("Train input queue is empty.")
+            return None
         
         # Initialize the caffe solver
         solver = self.init_caffe(self.solver_file)
         self.set_shapes(solver.net, train_shapes)
         
+        
         if self.test_in_queue is not None:
-            test_shapes = self.get_shapes(self.test_in_queue)
-            self.set_shapes(solver.test_nets[0], test_shapes)
+            try:
+                test_shapes = self.get_shapes(self.test_in_queue)
+                self.set_shapes(solver.test_nets[0], test_shapes)
+            except Empty:
+                self.log.error("Test input queue is empty.")
+                return None
         
         self.stat = ActivationStat(solver.net)
         
         train_flag = True
         while(train_flag):
-            
+            # Training
             start_iteration_tr = time.clock()
             train_flag = self.train(solver)            
             stop_iteration_tr = time.clock()
             self.log.debug(" Train Iteration time: {}"
                            .format(stop_iteration_tr-start_iteration_tr))
-
+            
+            # Testing
             if(self.test_in_queue is not None and
                solver.iter % self.test_interval == 0): 
                 start_iteration_te = time.clock()
@@ -186,8 +201,7 @@ class Trainer(multiprocessing.Process):
                 stop_iteration_te = time.clock()
                 self.log.debug(" Test Iteration time: {}"
                                .format(stop_iteration_te-start_iteration_te))
-            
-            
+            # Print & save stats
             if solver.iter % self.stat_inter == 0:
                 self.stat.add_history(solver.net)
                 self.stat.print_stats()
@@ -330,43 +344,38 @@ class ActivationStat(object):
     
     def __init__(self, net, historySize=20):
         self.historySize = historySize
-        dict_blobs = [(blob, []) for blob in net.blobs]
-        self.history = collections.OrderedDict(dict_blobs)
+        # list of tuples (blobs_name, blob_data) related to learnable params
+        self.list_blobs = [(key, RoundBuffer(historySize) )
+                      for key in net.params.keys()]
+        # dict of params
+#         self.dict_params = {key: RoundBuffer(historySize)
+#                       for key in net.params.keys()}
         self.log = logging.getLogger(__name__ + ".Stats")
 
     def add_history(self, net):
-        for blob in net.blobs:
-            s = net.blobs[blob].data.shape
-            if len(s) == 4:
-                dims = (0,2,3)
-            elif len(s) == 2:
-                dims = (0)
-            else:
-                continue
-            self.history[blob].append(np.average(net.blobs[blob].data > 0, dims))
-            if len(self.history[blob]) > self.historySize:
-                self.history[blob] = self.history[blob][1:]
+        for key, data in self.list_blobs:
+            # average only of positive values
+            # average of every activation map in the batch
+            avg_data = np.average(net.blobs[key].data > 0,(0,2,3))
+            data.append_round(avg_data)
                   
-        for l in net.params:
-            if len(net.params[l][0].data.shape) == 4:
-                energy = np.sum( net.params[l][0].data**2, (1,2,3))**0.5
-                self.log.debug(' ENERGY {} {} {}'.format(l, np.average(energy),
-                                                np.std(energy)))
-
-        for l in net.blobs:
-            mean = np.average(net.blobs[l].data)
-            sdev = np.std(net.blobs[l].data)
-            self.log.debug(' BLOB {} {} {}'.format(l, mean, sdev))
+#         for l in net.params:
+#             if len(net.params[l][0].data.shape) == 4:
+#                 energy = np.sum( net.params[l][0].data**2, (1,2,3))**0.5
+#                 self.log.debug(' ENERGY {} {} {}'.format(l, np.average(energy),
+#                                                 np.std(energy)))
+# 
+#         for l in net.blobs:
+#             mean = np.average(net.blobs[l].data)
+#             sdev = np.std(net.blobs[l].data)
+#             self.log.debug(' BLOB {} {} {}'.format(l, mean, sdev))
 
     def print_stats(self):
-        for blob in self.history:
-            try:
-                avrg = np.average( np.asarray(self.history[blob]), 0)
-                bins=[-10000, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
-                      0.9, 0.99, 10000]
-                hist, bins = np.histogram(avrg, bins)
-                hist = hist * (1.0/np.sum(hist))
-                histString = ' '.join(['%4d' % int(x*100+0.5) for x in hist])
-                self.log.info(' {}\t{}'.format(blob, histString))
-            except:
-                pass
+        for key, data in self.list_blobs:
+            avg = sum(data) / data.size
+            bins=[-10000, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+                  0.99, 10000]
+            hist, bins = np.histogram(avg, bins)
+            hist = hist * (1.0/np.sum(hist))
+            msg = " ".join(["{0:3}".format(int(val*100+0.5)) for val in hist])
+            self.log.info(":".join([key,msg]))
