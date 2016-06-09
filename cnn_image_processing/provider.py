@@ -61,7 +61,7 @@ class Provider(multiprocessing.Process):
             self.log.warning("No tuple reader defined.")
         
         self.log.debug("File list: {}".format(self.file_list))
-
+        
         with open(file_list) as flist:
             for line in flist:
                 packets = [{'path': path.strip()} for path in line.split()]
@@ -72,21 +72,22 @@ class Provider(multiprocessing.Process):
                     continue
                 self.log.debug("Paths: {}".format(line[0:-1]))
                 self.out_queue.put(packets)
-        
+
     def run(self):
         """
         Call the provide_loop once or in loop acording the loop flag.
         run is called by the start method in the separate process.
         """
-#     assert(self.t_readers != None)
         self.log.info(" started.")
-
-        if self.loop is not True:
-            self.provide_loop(self.t_readers, self.file_list)
-        else:
-            while True:
+        try:
+            if self.loop is not True:
                 self.provide_loop(self.t_readers, self.file_list)
+                self.log.info("End of file list: {}".format(self.file_list))
+                self.log.info(" end.")
+            else:
+                while True:
+                    self.provide_loop(self.t_readers, self.file_list)
+        except EnvironmentError as ex:
+            self.log.error(ex)
 
-        self.log.info("End of file list: {}".format(self.file_list))
         self.out_queue.put(None)
-        self.log.info(" end.")
