@@ -345,8 +345,9 @@ class ActivationStat(object):
     def __init__(self, net, historySize=20):
         self.historySize = historySize
         # list of tuples (blobs_name, blob_data) related to learnable params
+        learn_param_keys = net.params.viewkeys() & net.blobs.viewkeys()
         self.list_blobs = [(key, RoundBuffer(historySize) )
-                      for key in net.params.keys()]
+                      for key in sorted(learn_param_keys)]
         # dict of params
 #         self.dict_params = {key: RoundBuffer(historySize)
 #                       for key in net.params.keys()}
