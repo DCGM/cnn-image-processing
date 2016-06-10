@@ -10,7 +10,9 @@ from __future__ import division
 import caffe
 import logging
 import numpy as np
+from matplotlib import pyplot as plt
 from ..utils import RoundBuffer
+from distutils.util import strtobool
 
 class PyPSNRL(caffe.Layer):
     """
@@ -45,10 +47,22 @@ class PyPSNRL(caffe.Layer):
             self.print_step = int(self.dict_param['print_step'])
         else:
             self.print_step = 50
+        if 'plot_graph' in self.dict_param:
+            self.plot_graph = strtobool(self.dict_param['plot_graph'])
+        else:
+            self.plot_graph = False
+        if 'graph_name' in self.dict_param:
+            self.graph_name = self.dict_param['graph_name']
+        else:
+            self.graph_name = 'iPSNR.png'
         
         self.iterations = 0
         self.psnr_buffers = [RoundBuffer(max_size=self.history_size)
                              for _ in xrange(len(bottom)-1)]
+        self.history = []
+        if self.plot_graph:
+            self.fig = plt.figure()
+            self.ax = self.fig.add_subplot(111)
        
     def reshape(self, bottom, top):
         if len(top) > len(bottom):
@@ -74,8 +88,13 @@ class PyPSNRL(caffe.Layer):
             if len(l_psnr) < 2:
                 self.log.info(msg)
             elif len(l_psnr) == 2:
-                ipsnr_msg = " iPSNR: {} ".format(avg_psnr[0] - avg_psnr[1])
-                self.log.info(" ".join([ipsnr_msg, msg]))     
+                ipsnr = avg_psnr[0] - avg_psnr[1]
+                ipsnr_msg = " iPSNR: {} ".format(ipsnr)
+                self.log.info(" ".join([ipsnr_msg, msg]))
+                
+                if self.plot_graph:
+                    self.history.append(ipsnr)
+                    self.plot()
             
         for i_data in xrange(len(top)):
             top[i_data].data[...] = bottom[i_data].data
@@ -101,3 +120,10 @@ class PyPSNRL(caffe.Layer):
                     bottom_psnr.append(psnr)
             results.append(bottom_psnr)
         return results
+    
+    def plot(self):
+        self.ax.cla()
+        self.ax.plot(self.history)
+        self.ax.set_xlabel("Iteration / {}".format(self.print_step))
+        self.ax.set_ylabel("iPSNR")
+        self.fig.savefig(self.graph_name)
