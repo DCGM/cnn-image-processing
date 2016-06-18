@@ -64,6 +64,8 @@ class Sampler(multiprocessing.Process):
             i_buffer = self.rng.randint(0, self.buffer.size)
             rn_packets = self.buffer[i_buffer]
             for t_filter in self.t_filters:
+                if rn_packets is None:
+                    break
                 rn_packets = t_filter(rn_packets)
             
             if rn_packets != None:

@@ -40,18 +40,6 @@ class TFilter(object):
     def __call__(self, packets):
         return self.run(packets)
 
-class Pass(object):
-    "Dummy object passing the data."
-    
-    def run(self, packet):
-        """
-        Return packet.
-        """
-        return packet
-    
-    def __call__(self, packet):
-        return packet
-
 class TCropCoef8ImgFilter(object):
     """
     Specialized cropper for the n-tupple of jpeg-coef and n-image.
@@ -68,6 +56,7 @@ class TCropCoef8ImgFilter(object):
         self.rng = rng if rng != None else np.random.RandomState(5)
         self.filters = filters
         self.size = size
+        self.log = logging.getLogger(__name__ + ".TCropCoef8ImgFilter")
   
     def run(self, packets):
         """
@@ -78,7 +67,12 @@ class TCropCoef8ImgFilter(object):
         assert len(packets) == len(self.filters)
         # always ommit the last row and column in the coef data
         shape = np.asarray(packets[0]['data'].shape[0:2])-1
-        pivot = [ self.rng.randint(0, dim - self.size) for dim in shape ]
+        try:
+            pivot = [ self.rng.randint(0, dim - self.size) for dim in shape ]
+        except ValueError as ve:
+            path = packets[0]['path']
+            self.log.error(" ".join( (ve.message, "Generate pivot", path) ) )
+            return None
         pivot = np.asarray(pivot)
         size = np.asarray((self.size, self.size))
         
@@ -233,3 +227,15 @@ class Sub(object):
     
     def __call__(self, packet):
         return self.sub(packet)
+
+class Pass(object):
+    "Dummy object passing the data."
+    
+    def run(self, packet):
+        """
+        Return packet.
+        """
+        return packet
+    
+    def __call__(self, packet):
+        return packet
