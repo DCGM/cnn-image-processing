@@ -216,9 +216,9 @@ class PyEuclideanLossLayer(caffe.Layer):
             if not propagate_down[i]:
                 continue
             if i == 0:
-                sign = 1
+                sign = 1 # label at bottom[1]: data - label
             else:
-                sign = -1
+                sign = -1 # label at bottom[0]: label - data
             if self.pixel_norm:
                 bottom[i].diff[...] = sign * self.diff / bottom[i].data.size
             else:

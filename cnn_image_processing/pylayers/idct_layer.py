@@ -4,6 +4,8 @@ Created on Jun 2, 2016
 @author: isvoboda
 '''
 
+from __future__ import division
+
 import numpy as np
 import caffe
 import cv2
