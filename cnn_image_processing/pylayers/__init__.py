@@ -7,4 +7,4 @@ from .sub_layer import *
 from .idct_vis_layer import *
 from .idct_layer import *
 from .decode_jpeg_q20 import *
-
+from .block_reshape_layer import *
