@@ -228,6 +228,30 @@ class Sub(object):
     def __call__(self, packet):
         return self.sub(packet)
 
+class JPGBlockReshape(object):
+    def __init__(self):
+        pass
+    
+    def reshape(self, packet):
+        data = packet['data']
+        assert(data.shape[2] == 1)        
+        shape = [ dim // 8 for dim in data.shape[0:2] ]
+        shape.append(64)
+        shaped_data = np.zeros( shape, dtype=np.float32)
+        step = 8
+        for y_id in xrange(shaped_data.shape[0]):
+            for x_id in xrange(shaped_data.shape[1]):
+                in_y = step*y_id
+                in_x = step*x_id 
+                shaped_data[y_id, x_id] =\
+                    data[in_y:in_y+step, in_x:in_x+step].reshape(64)
+    
+        packet['data'] = shaped_data
+        return packet
+    
+    def __call__(self, packet):
+        return self.reshape(packet)
+
 class Pass(object):
     "Dummy object passing the data."
     

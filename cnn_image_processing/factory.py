@@ -17,11 +17,13 @@ class ObjectFactory(object):
                   'TReader': filters.TFilter,
                   'CoefNpyTxtReader': filters.CoefNpyTxtReader,
                   'ImageReader': filters.ImageReader,
+                  'ImageX8Reader': filters.ImageX8Reader,
                   'Crop': filters.Crop,
                   'LTCrop': filters.LTCrop,
                   'Label': filters.Label,
                   'Mul': filters.Mul,
-                  'Sub': filters.Sub }  # Static attribute
+                  'Sub': filters.Sub,
+                  'JPGBlockReshape': filters.JPGBlockReshape }  # Static attribute
 
     @staticmethod
     def create_object(id_object, **kwargs):
