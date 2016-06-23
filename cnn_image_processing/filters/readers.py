@@ -52,7 +52,9 @@ class ImageX8Reader(ImageReader):
     Crop the images to have the size divideable by 8.
     Pivot for cropping is the image left up corner.
     """
-    log = logging.getLogger(__name__ + ".ImageX8Reader")
+    def __init__(self, grayscale=bool):
+        super(ImageX8Reader, self).__init__(grayscale)
+        self.log = logging.getLogger(__name__ + ".ImageX8Reader")
 
     def read(self, packet):
         """
@@ -69,8 +71,8 @@ class ImageX8Reader(ImageReader):
         """
         Crop the img to be 8x divisible.
         """
-        crop_c = [i - (i % 8) for i in img.shape[0:2]]
-        return img[0:crop_c[0], 0:crop_c[1], ...]
+        crop_shape = [i - (i % 8) for i in img.shape[0:2]]
+        return img[0:crop_shape[0], 0:crop_shape[1], ...]
 
 class CoefNpyTxtReader(object):
     """
