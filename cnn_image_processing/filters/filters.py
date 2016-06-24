@@ -3,6 +3,8 @@ import cv2
 import logging
 import numpy as np
 
+from ..utils import decode_dct
+
 class TFilter(object):
     "Tuple Filter container."
     def __init__(self, filters=None):
@@ -13,7 +15,7 @@ class TFilter(object):
         """
         self.filters=filters
     
-    def size(self):
+    def n_filters(self):
         if self.filters is not None:
             return len(self.filters)
         else:
@@ -40,22 +42,23 @@ class TFilter(object):
     def __call__(self, packets):
         return self.run(packets)
 
-class TCropCoef8ImgFilter(object):
+class TCropCoef8ImgFilter(TFilter):
     """
     Specialized cropper for the n-tupple of jpeg-coef and n-image.
     Crop is obtained only from the image size divideable by 8.
     """
-    def __init__(self, rng=None, size=3, filters=None):
+    def __init__(self, rng=None, crop_size=3, filters=None):
         """
         GenerateCropsFilter constructor
         Args:
           rng: Random state generator.
-          size: Is the crop size of the coef-jpeg data.
+          crop_size: Is the crop size of the coef-jpeg data.
                 For an image it is 8 x size.
         """
+        super(TCropCoef8ImgFilter, self).__init__(filters)
         self.rng = rng if rng != None else np.random.RandomState(5)
         self.filters = filters
-        self.size = size
+        self.crop_size = crop_size
         self.log = logging.getLogger(__name__ + ".TCropCoef8ImgFilter")
   
     def run(self, packets):
@@ -68,17 +71,17 @@ class TCropCoef8ImgFilter(object):
         # always ommit the last row and column in the coef data
         shape = np.asarray(packets[0]['data'].shape[0:2])-1
         try:
-            pivot = [ self.rng.randint(0, dim - self.size) for dim in shape ]
+            pivot = [ self.rng.randint(0, dim - self.crop_size) for dim in shape ]
         except ValueError as ve:
             path = packets[0]['path']
             self.log.error(" ".join( (ve.message, "Generate pivot", path) ) )
             return None
         pivot = np.asarray(pivot)
-        size = np.asarray((self.size, self.size))
+        crop_size = np.asarray((self.crop_size, self.crop_size))
         
         crops = []
         for filter_crop, packet in zip(self.filters, packets):
-            crop_packet = filter_crop(packet, pivot, size)
+            crop_packet = filter_crop(packet, pivot, crop_size)
             crops.append(crop_packet)
             
         return tuple(crops)
@@ -99,7 +102,7 @@ class Crop(object):
     
     def __init__(self, scale=1, scale_pivot=1):
         """
-        Contructs the Crop - Cemter pivot Crop
+        Constructs the Crop - Center pivot Crop
         Args:
             scale: A scale factor the size is multiplied with.
                    Default = 1
@@ -146,7 +149,7 @@ class LTCrop(object):
         """
         Contructs the LTCrop - Left Top pivot Crop
         Args:
-            scale: The scale factor the pivot ans size is multiplied with.
+            scale: The scale factor the pivot and size is multiplied with.
                    Default = 1
         """
         self.scale = scale
@@ -170,6 +173,7 @@ class LTCrop(object):
         out_packet = {key:val for key, val in packet.items() if key != 'data'}
         out_packet['data'] = packet['data'][p_y:p_y+size_y, p_x:p_x+size_x]
         out_packet['pivot'] = [p_y, p_x]
+        
         return out_packet
     
     def __call__(self, packet=None, pivot=None, size=None):
@@ -214,6 +218,20 @@ class Mul(object):
     def __call__(self, packet):
         return self.mul(packet)
 
+class Add(object):
+    """
+    Add an value from data.
+    """
+    def __init__(self, val=0):
+        self.val = val
+        
+    def add(self, packet):
+        packet['data'] += self.val
+        return packet
+    
+    def __call__(self, packet):
+        return self.add(packet)
+
 class Sub(object):
     """
     Subtract an value from data.
@@ -251,6 +269,19 @@ class JPGBlockReshape(object):
     
     def __call__(self, packet):
         return self.reshape(packet)
+    
+class MullQuantTable(object):
+    def __init__(self):
+        pass
+    
+    def mull(self, packet):
+        data = packet['data']
+        coef_quant_data = data[:,:,0:64] * data[:,:,64:]
+        packet['data'] = coef_quant_data
+        return packet
+    
+    def __call__(self, packet):
+        return self.mull(packet)
 
 class Pass(object):
     "Dummy object passing the data."
@@ -263,3 +294,64 @@ class Pass(object):
     
     def __call__(self, packet):
         return packet
+
+class Preview(object):
+    def __init__(self, scale=1, shift=0, name=None):
+        self.scale = scale
+        self.shift = shift
+        self.name = name
+        
+    def preview(self, packet):
+        name = None
+        if self.name is None:
+            if 'label' in packet:
+                name = packet['label']
+            else:
+                name = packet['path']
+        else: name = self.name
+        
+        img = packet['data'] * self.scale + self.shift
+        cv2.imshow(name, img)
+        cv2.waitKey()
+        return packet
+        
+    def __call__(self, packet):
+        return self.preview(packet)
+
+class DecodeDCT(object):
+    def __init__(self):
+        pass
+    def decode(self, packet):
+        packet['data'] = decode_dct(packet['data'])
+        return packet
+    
+    def __call__(self, packet):
+        return self.decode(packet)
+                   
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        

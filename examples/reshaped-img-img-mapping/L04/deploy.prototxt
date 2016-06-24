@@ -110,12 +110,18 @@ layer { name: 'Scale' type: 'Power'
         power_param { power: 1 scale: 1 shift: 0.5 }
 }
 
+layer { type: 'Python' name: 'PSNR'
+       bottom: 'deblock-conv_4' bottom: 'deblock-jpeg' bottom: 'deblock-label'
+       python_param: { module: 'cnn_image_processing' layer: 'PyPSNRL'
+                       param_str: "max: 1, print_step: 50, history_size: 250, plot_graph: True, graph_name: tr-iPSNR.pdf" }
+       include { phase: TRAIN }
+}
 
 layer { type: 'Python' name: 'PSNR'
        bottom: 'deblock-conv_4' bottom: 'deblock-jpeg' bottom: 'deblock-label'
        python_param: { module: 'cnn_image_processing' layer: 'PyPSNRL'
-                       param_str: "max: 1, print_step: 10, history_size: 250, plot_graph: True, graph_name: tr-iPSNR.pdf" }
-#       include { phase: TRAIN }
+                       param_str: "max: 1, print_step: 1, history_size: 250, plot_graph: True, graph_name: te-iPSNR.pdf" }
+       include { phase: TEST }
 }
 
 layer { type: 'Python' name: 'Visualization'

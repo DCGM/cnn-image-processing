@@ -29,9 +29,8 @@ def code_dct(img):
             in_x = step*x_coef
             in_y = step*y_coef 
             coefs[y_coef, x_coef] = \
-                cv2.dct(img[in_y:in_y+step, in_x:in_x+step] - 128).reshape(64)
+                cv2.dct(img[in_y:in_y+step, in_x:in_x+step]).reshape(64)
 
-    coefs /= 1024
     return coefs
 
 def decode_dct(coefs):
@@ -51,7 +50,7 @@ def decode_dct(coefs):
             in_x = step*x_coef
             in_y = step*y_coef 
             img[in_y:in_y+step, in_x:in_x+step] = \
-                cv2.idct(coefs[y_coef, x_coef].reshape([8,8]) * 1024)
+                cv2.idct(coefs[y_coef, x_coef].reshape([8,8]))
 
-    img += 128
+    #img += 128
     return np.expand_dims(img, axis=2)

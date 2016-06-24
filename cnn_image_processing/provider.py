@@ -22,7 +22,7 @@ class Provider(multiprocessing.Process):
         """
         Provider constructor
         Args:
-          queue_size: The between process queue max size.
+          queue_size: The between process queue max n_filters.
           reader: Reader parsing the elements per line.
           loop: Boolean True read the file in loop, False read the file once.
         """
@@ -55,7 +55,7 @@ class Provider(multiprocessing.Process):
             self.log.debug("Number of tuple readers: {}".
                           format(len(self.t_readers)))
             self.log.debug("Number of readers in tuple reader: {}".
-                          format([ reader.size() for reader in
+                          format([ reader.n_filters() for reader in
                                   self.t_readers]))
         else:
             self.log.warning("No tuple reader defined.")
@@ -71,7 +71,8 @@ class Provider(multiprocessing.Process):
                     self.log.error(val_e)
                     continue
                 self.log.debug("Paths: {}".format(line[0:-1]))
-                self.out_queue.put(packets)
+                if self.out_queue is not None:
+                    self.out_queue.put(packets)
 
     def run(self):
         """
@@ -89,5 +90,6 @@ class Provider(multiprocessing.Process):
                     self.provide_loop(self.t_readers, self.file_list)
         except EnvironmentError as ex:
             self.log.error(ex)
-
-        self.out_queue.put(None)
+        
+        if self.out_queue is not None:
+            self.out_queue.put(None)

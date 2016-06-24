@@ -22,8 +22,12 @@ class ObjectFactory(object):
                   'LTCrop': filters.LTCrop,
                   'Label': filters.Label,
                   'Mul': filters.Mul,
+                  'Add': filters.Add,
                   'Sub': filters.Sub,
-                  'JPGBlockReshape': filters.JPGBlockReshape }  # Static attribute
+                  'JPGBlockReshape': filters.JPGBlockReshape,
+                  'MullQuantTable': filters.MullQuantTable,
+                  'Preview': filters.Preview,
+                  'DecodeDCT': filters.DecodeDCT }  # Static attribute
 
     @staticmethod
     def create_object(id_object, **kwargs):
