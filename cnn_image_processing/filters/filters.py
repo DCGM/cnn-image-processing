@@ -327,31 +327,3 @@ class DecodeDCT(object):
     
     def __call__(self, packet):
         return self.decode(packet)
-                   
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
