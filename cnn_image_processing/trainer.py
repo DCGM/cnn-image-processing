@@ -24,7 +24,7 @@ class Trainer(multiprocessing.Process):
                  solver_file=None, batch_size=64, max_iter=100,
                  test_iter=100, test_interval = 2500,
                  caffe_weights=None, caffe_solverstate=None, caffe_mode=None,
-                 stat_inter=100,
+                 stat_interval=100,
                  gpu_id=0,
                  buffer_size=256):
         """
@@ -40,7 +40,7 @@ class Trainer(multiprocessing.Process):
           caffe_weights: Weights to load.
           caffe_solverstate: Solverstate to restore.
           caffe_mode: Set the CPU or GPU caffe mode.
-          stat_inter: interval how ofhte should be computed net layers stats
+          stat_interval: interval how ofhte should be computed net layers stats
           gpu_id: The gpu id on a multi gpu system.
           buffer_size: Size of the internal buffer - used with threads.
         """
@@ -56,7 +56,7 @@ class Trainer(multiprocessing.Process):
         self.caffe_weights = caffe_weights
         self.caffe_solverstate = caffe_solverstate
         self.caffe_mode = "GPU" if caffe_mode == None else caffe_mode
-        self.stat_inter = stat_inter 
+        self.stat_interval = stat_interval 
         self.gpu_id = gpu_id   
         self.buffer = Queue.Queue(buffer_size)
         
@@ -202,7 +202,7 @@ class Trainer(multiprocessing.Process):
                 self.log.debug(" Test Iteration time: {}"
                                .format(stop_iteration_te-start_iteration_te))
             # Print & save stats
-            if solver.iter % self.stat_inter == 0:
+            if solver.iter % self.stat_interval == 0:
                 self.stat.add_history(solver.net)
                 self.stat.print_stats()
             
