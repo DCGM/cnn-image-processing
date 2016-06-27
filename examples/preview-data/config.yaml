@@ -9,7 +9,7 @@ Provider:
   - TFilter:
       Filters:
       - MullQuantTable:
-      - Mul: {val: 1024}
+      - Pass:
       - Pass:
   - TFilter:
       Filters:
