@@ -22,6 +22,7 @@ class ObjectFactory(object):
                   'LTCrop': filters.LTCrop,
                   'Label': filters.Label,
                   'Mul': filters.Mul,
+                  'Div': filters.Div,
                   'Add': filters.Add,
                   'Sub': filters.Sub,
                   'JPGBlockReshape': filters.JPGBlockReshape,

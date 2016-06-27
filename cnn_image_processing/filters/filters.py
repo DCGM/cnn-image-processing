@@ -1,3 +1,4 @@
+from __future__ import division
 from __future__ import print_function
 import cv2
 import logging
@@ -213,6 +214,25 @@ class Mul(object):
         
     def mul(self, packet):
         packet['data'] *= self.val
+        return packet
+    
+    def __call__(self, packet):
+        return self.mul(packet)
+
+class Div(object):
+    """
+    Divides data with the given scalar.
+    """
+    def __init__(self, val=1):
+        """
+        Initialize the simple multiplier
+        Args:
+            val: The div coefficient.
+        """
+        self.val = val
+        
+    def mul(self, packet):
+        packet['data'] /= self.val
         return packet
     
     def __call__(self, packet):
