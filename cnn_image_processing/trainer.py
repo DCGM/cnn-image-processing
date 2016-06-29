@@ -31,7 +31,7 @@ class Trainer(multiprocessing.Process):
         Trainer constructor
         Args:
           train_in_queue: The queue the train data are read from.
-          test_in_queue: The queue the test data are read from.
+          test_in_queue: The list of queues the test data are read from.
           solver: initialized Caffe solver.
           batch_size: Size of the train batch data.
           max_iter: number of train iterations.
@@ -112,7 +112,6 @@ class Trainer(multiprocessing.Process):
         
         return dict_shapes
         
-        
     def set_shapes(self, net, shapes):
         for key, shape in shapes.items():
             net.blobs[key].reshape(*shape)
@@ -141,10 +140,10 @@ class Trainer(multiprocessing.Process):
 
         return True if i_batch == self.batch_size else False
     
-    def test(self, net):
+    def test(self, net, in_queue):
         self.log.info(" Start phase Test.")
         for _ in xrange(self.test_iter):
-            fetch_flag = self.fetch_batch(self.test_in_queue, net)
+            fetch_flag = self.fetch_batch(in_queue, net)
             net.forward()
         
         self.log.info(" End phase Test.")
@@ -173,11 +172,12 @@ class Trainer(multiprocessing.Process):
         solver = self.init_caffe(self.solver_file)
         self.set_shapes(solver.net, train_shapes)
         
-        
         if self.test_in_queue is not None:
+            assert(len(self.test_in_queue) == len(solver.test_nets))
             try:
-                test_shapes = self.get_shapes(self.test_in_queue)
-                self.set_shapes(solver.test_nets[0], test_shapes)
+                for i_test in range(len(self.test_in_queue)):
+                    test_shapes = self.get_shapes(self.test_in_queue[i_test])
+                    self.set_shapes(solver.test_nets[i_test], test_shapes)
             except Empty:
                 self.log.error("Test input queue is empty.")
                 return None
@@ -196,11 +196,13 @@ class Trainer(multiprocessing.Process):
             # Testing
             if(self.test_in_queue is not None and
                solver.iter % self.test_interval == 0): 
-                start_iteration_te = time.clock()
-                self.test(solver.test_nets[0])            
-                stop_iteration_te = time.clock()
-                self.log.debug(" Test Iteration time: {}"
-                               .format(stop_iteration_te-start_iteration_te))
+                for i_test in range(len(self.test_in_queue)):
+                    start_iteration_te = time.clock()
+                    self.test(solver.test_nets[i_test],
+                              self.test_in_queue[i_test])            
+                    stop_iteration_te = time.clock()
+                    self.log.debug(" Test Iteration time: {}"
+                                .format(stop_iteration_te-start_iteration_te))
             # Print & save stats
             if solver.iter % self.stat_interval == 0:
                 self.stat.add_history(solver.net)

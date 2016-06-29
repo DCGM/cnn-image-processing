@@ -30,18 +30,18 @@ class ObjectFactory(object):
                   'Preview': filters.Preview,
                   'DecodeDCT': filters.DecodeDCT }  # Static attribute
 
-    @staticmethod
-    def create_object(id_object, **kwargs):
+    @classmethod
+    def create_object(cls, id_object, **kwargs):
         """
         Creates the object according the id_filter.
         In case the id_object has not yet been registered than add it.
         """
-        if not ObjectFactory.factories.has_key(id_object):
+        if not cls.factories.has_key(id_object):
             # ToDo eval is not safe - anything could be inserted in.
-            ObjectFactory.factories[id_object] = \
-                                           ObjectFactory.get_class(id_object)
+            cls.factories[id_object] = \
+                                           cls.get_class(id_object)
             print(id_object)
-        return ObjectFactory.factories[id_object](**kwargs)
+        return cls.factories[id_object](**kwargs)
 
     @staticmethod
     def get_class(class_name):
