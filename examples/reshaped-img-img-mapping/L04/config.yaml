@@ -31,6 +31,8 @@ Train:
         - {LTCrop: null}
         - {LTCrop: null}
         Parameters: {crop_size: 8}
+  provider_queue_size: 5
+  sample_queue_size: 2048
 
 Trainer:
   batch_size: 32
@@ -41,7 +43,5 @@ Trainer:
   caffe_weights:
   test_iter: 25
   test_interval: 500
-  stat_inter: 10
+  stat_interval: 10
 
-provider_queue_size: 5
-sample_queue_size: 2048

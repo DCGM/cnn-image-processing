@@ -91,7 +91,7 @@ def main(argv):
     Args:
         argv: list of command line arguments.
     '''
-    parser = argparse.ArgumentParser(description="Train the coef CNN.")
+    parser = argparse.ArgumentParser(description="Train the cnn")
     parser.add_argument("-c", "--conf-file", help="Configuration file",
                         type=str, required=True )
     parser.add_argument("-s", "--solver-file", help="Solver file", type=str,

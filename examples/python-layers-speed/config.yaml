@@ -9,7 +9,7 @@ Train:
       - TFilter:
           Filters: [ Pass: , Mul: {val: 0.004} ]
    
-  Processing:
+  Sampler:
     Parameters: {samples: 500, buffer_size: 50}
     TFilters:
       - TCropCoef8ImgFilter:
