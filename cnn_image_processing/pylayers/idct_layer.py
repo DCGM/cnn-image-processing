@@ -45,6 +45,8 @@ class PyIDCTL(caffe.Layer):
         
     def backward(self, top, propagate_down, bottom):           
         for i_top in xrange(len(top)):
+            if not propagate_down[i_top]:
+                continue
             for i_diff in xrange(len(top[i_top].diff)):
                 top_diff = top[0].diff[i_diff].transpose([1,2,0]) #[y x z]
                 bottom_data = bottom[i_top].data[i_diff].transpose([1,2,0]) #[y x z]
