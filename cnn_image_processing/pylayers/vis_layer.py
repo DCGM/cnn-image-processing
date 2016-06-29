@@ -80,5 +80,5 @@ class PyVisLayer(caffe.Layer):
             preview_resized = cv2.resize(img, (0, 0), fx=self.scale,
                                          fy=self.scale)
             
-            cv2.imshow(key, preview_resized/255.)
+            cv2.imshow(key, preview_resized)
         cv2.waitKey(5)   
