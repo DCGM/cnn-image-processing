@@ -16,7 +16,6 @@ signal.signal(signal.SIGINT, lambda x,y: sys.exit(1))
 
 LOGGER = logging.getLogger("cnn_image_processing")
 
-
 def parse_phase(conf):
     dmodules = {}
     
@@ -92,19 +91,28 @@ def main(argv):
         argv: list of command line arguments.
     '''
     parser = argparse.ArgumentParser(description="Train the cnn")
-    parser.add_argument("-c", "--conf-file", help="Configuration file",
-                        type=str, required=True )
-    parser.add_argument("-s", "--solver-file", help="Solver file", type=str,
-                         required=True)
-    parser.add_argument("-tr", "--train-list", help="Training file list",
-                        type=str, required=True)
-    parser.add_argument("-te", "--test-lists", help="Testing file lists",
-                        nargs='*', type=str, required=False, default=None)
-    parser.add_argument("-v", "--verbose", help="Set the verbose mode.",
-                        action="store_true")
+    parser.add_argument("-c", "--conf-file", action='store', type=str,
+                        choices=None, required=True, help="Configuration file",
+                        metavar=None, dest='conf_file' )
+    
+    parser.add_argument("-s", "--solver-file", action='store', type=str,
+                        choices=None, required=True, help="Solver file",
+                        metavar=None, dest='solver_file')
+    
+    parser.add_argument("-v", "--verbose", action="store_true", required=False,
+                        help="Set the verbose mode.", dest='verbose')
+    
+    parser.add_argument("-tr", "--train-list", action='store', type=str,
+                        help="Training file list", required=True,
+                        dest='train_list')
+    
+    parser.add_argument("-te", "--test-lists", action='store',
+                        nargs='*', type=str, default=None,
+                        required=False, dest='test_lists',
+                        help="Training file lists")
     
     args = parser.parse_args()
-    
+
     # Print the arguments
     for key, val in vars(args).iteritems():
         print("{}: {}".format(key, val))
@@ -138,7 +146,7 @@ def main(argv):
             app['Test'][test_k]['provider'].file_list = test_lists[i_test]
             app['Test'][test_k]['provider'].start()
             app['Test'][test_k]['sampler'].start()
-    
+
     app['Trainer'].solver_file = solver_file
     app['Trainer'].start()
     app['Trainer'].join()
