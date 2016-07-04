@@ -8,6 +8,7 @@ from factory import ObjectFactory
 from provider import Provider
 from sampler import Sampler
 from trainer import Trainer
+from fcn import FCN
 
 class Creator(object):
     """
@@ -73,3 +74,11 @@ class Creator(object):
         Creates the trainer.
         """
         return Trainer(**config)
+    
+    @classmethod
+    def create_fcn(cls, config):
+        """
+        Creates the trainer.
+        """
+        return FCN(**config)
+
