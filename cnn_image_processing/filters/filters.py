@@ -5,6 +5,7 @@ import logging
 import numpy as np
 
 from ..utils import decode_dct
+from ..utils import code_dct
 
 class TFilter(object):
     "Tuple Filter container."
@@ -316,8 +317,8 @@ class Pass(object):
         return packet
 
 class Preview(object):
-    def __init__(self, scale=1, shift=0, name=None):
-        self.scale = scale
+    def __init__(self, norm=1, shift=0, name=None):
+        self.norm = norm
         self.shift = shift
         self.name = name
         
@@ -330,7 +331,7 @@ class Preview(object):
                 name = packet['path']
         else: name = self.name
         
-        img = packet['data'] * self.scale + self.shift
+        img = packet['data'] / self.norm + self.shift
         cv2.imshow(name, img)
         cv2.waitKey()
         return packet
@@ -347,3 +348,14 @@ class DecodeDCT(object):
     
     def __call__(self, packet):
         return self.decode(packet)
+
+class CodeDCT(object):
+    def __init__(self):
+        pass
+    def code(self, packet):
+        packet['data'] = code_dct(packet['data'])
+        return packet
+    
+    def __call__(self, packet):
+        return self.code(packet)
+

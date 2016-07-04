@@ -28,7 +28,8 @@ class ObjectFactory(object):
                   'JPGBlockReshape': filters.JPGBlockReshape,
                   'MullQuantTable': filters.MullQuantTable,
                   'Preview': filters.Preview,
-                  'DecodeDCT': filters.DecodeDCT }  # Static attribute
+                  'DecodeDCT': filters.DecodeDCT,
+                  'CodeDCT': filters.CodeDCT }  # Static attribute
 
     @classmethod
     def create_object(cls, id_object, **kwargs):
