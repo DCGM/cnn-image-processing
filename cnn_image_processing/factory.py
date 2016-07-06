@@ -29,7 +29,8 @@ class ObjectFactory(object):
                   'MullQuantTable': filters.MullQuantTable,
                   'Preview': filters.Preview,
                   'DecodeDCT': filters.DecodeDCT,
-                  'CodeDCT': filters.CodeDCT }  # Static attribute
+                  'CodeDCT': filters.CodeDCT,
+                  'Pad8': filters.Pad8 }  # Static attribute
 
     @classmethod
     def create_object(cls, id_object, **kwargs):

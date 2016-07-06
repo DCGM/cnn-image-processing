@@ -359,3 +359,22 @@ class CodeDCT(object):
     def __call__(self, packet):
         return self.code(packet)
 
+class Pad8(object):
+    """
+    Pad the packet's most left nad bottom data to be divideable by 8
+    """
+    def pad(self, packet):
+        data = packet['data']
+        data_shape = data.shape[0:2]
+        res = [ dim%8 for dim in data_shape ]
+        borders = [ 8-rem if rem != 0 else 0 for rem in res ]
+        yx_borders = [(0, borders[0]), (0 , borders[1]), (0,0) ]
+        pad_data = np.pad(data, yx_borders, mode='edge')
+        packet['orig_shape'] = data.shape
+        packet['data'] = pad_data
+        return packet
+
+    def __call__(self, packet):
+        return self.pad(packet)
+    
+
