@@ -13,6 +13,7 @@ import logging
 import os
 
 from filters.writers import ImageWriter
+from cProfile import label
 
 class FCN(multiprocessing.Process):
     """
@@ -60,7 +61,7 @@ class FCN(multiprocessing.Process):
         scale_shape = self.patch_size[[2,0,1]] / orig_shape[1:]
         
         for in_key in fcn.inputs:
-            orig_shape = np.asarray(fcn.blobs[self.in_blob].shape)
+            orig_shape = np.asarray(fcn.blobs[in_key].shape)
             new_z, new_y, new_x = (orig_shape[1:] * scale_shape).astype(np.int)
             fcn.blobs[in_key].reshape(self.batch_size, new_z, new_y, new_x)
         
@@ -122,36 +123,43 @@ class FCN(multiprocessing.Process):
         
         return parts
         
-    def fetch_batch(self, queue, act_packets, parts_meta):
+    def read(self, queue, in_packets, parts_meta):
         i_patch = 0
         i_batch = 0
         start_fetch = time.clock()  
         for packets in iter(queue.get, None):
+            
             dest_shape = None
             orig_shape = None
+            
             for packet in packets:
-                if packet['label'] == self.in_blob:
-                    
-                    if 'orig_shape' in packet:
-                        orig_shape = packet['orig_shape']
+                label = packet['label']
+                
+                if label == 'shape':
+                    dest_shape = packet['data'].shape
+                
+                else:
                     packet['parts'] = []
                     split_packet = self.split(packet)
-                    parts_meta.extend(split_packet)
-                    act_packets.append(packet)
-                    i_batch += len(split_packet)
-                    i_patch += 1
-                elif packet['label'] == 'shape':
-                    dest_shape = packet['data'].shape
+                    parts_meta[label].extend(split_packet)
+                    in_packets[label].append(packet)
+                 
+                    if 'orig_shape' in packet:
+                        orig_shape = packet['orig_shape']
+                    
+                    if label == self.in_blob:
+                        i_batch += len(split_packet)
+                        i_patch += 1
             
             if dest_shape != None:
                 dest_shape = np.asarray(dest_shape)
             elif orig_shape != None:
                 dest_shape = np.asarray(orig_shape)
             else:
-                data_shape = np.asarray(act_packets[-1]['data'].shape[0:2])
-                dest_shape = self.out_scale * data_shape
+                data_shape = in_packets[self.in_blob][-1]['data'].shape[0:2]
+                dest_shape = self.out_scale * np.asarray(data_shape)
             
-            act_packets[-1]['dest_shape'] = dest_shape 
+            in_packets[self.in_blob][-1]['dest_shape'] = dest_shape 
             
             if i_batch >= self.batch_size:            
                 break
@@ -160,21 +168,23 @@ class FCN(multiprocessing.Process):
         self.log.debug(" Fetch data time: {}".format(stop_fetch-start_fetch))
         self.log.debug(" Fetch packets: {}".format(i_patch))
         self.log.debug(" Packets split into: {} parts".format(i_batch))
+        
         return i_batch >= self.batch_size
     
     def feed_fcn(self, fcn, parts_meta, batch_size):
         res = False
-        if len(parts_meta) >= batch_size:
-            res = True
-            for i_batch in xrange(batch_size):
-                part = parts_meta[i_batch]
-                data = part['data']
-                label = part['label']
-                fcn.blobs[label].data[i_batch][...] = data.transpose([2,0,1]) #[z,y,x]
+        for label in parts_meta.keys():
+            if len(parts_meta[label]) >= batch_size:
+                res = True
+                for i_batch in xrange(batch_size):
+                    part = parts_meta[label][i_batch]
+                    data = part['data']
+                    in_data = data.transpose([2,0,1]) #[z,y,x]
+                    fcn.blobs[label].data[i_batch][...] = in_data
         
         return res
     
-    def gather_parts(self, fcn, act_packets, parts_meta, batch_size):
+    def gather_parts(self, fcn, in_packets, parts_meta, batch_size):
         
         fcn_out_data = fcn.blobs[self.out_blob].data
         
@@ -182,13 +192,18 @@ class FCN(multiprocessing.Process):
         
         for i_batch in xrange(batch_size):
             part_data = np.copy(fcn_out_data[i_batch].transpose([1,2,0]))
-            part_meta = parts_meta.pop(0)
+            part_meta = parts_meta[self.in_blob].pop(0)
+            pop_keys = parts_meta.viewkeys() - {self.in_blob}
+            for key in pop_keys:
+                if len(parts_meta[key]) > 0: parts_meta[key].pop(0)
             part_meta['data'] = part_data
-            act_packets[0]['parts'].append(part_meta)
-            
-            if part_meta['part_id'] == (part_meta['n_parts']-1):
-                done_packets.append(act_packets.pop(0))
+            in_packets[self.in_blob][0]['parts'].append(part_meta)
         
+            if part_meta['part_id'] == (part_meta['n_parts']-1):
+                done_packets.append(in_packets[self.in_blob].pop(0))
+                for key in pop_keys:
+                    if len(in_packets[key]) > 0: in_packets[key].pop(0)
+            
         return done_packets
             
     def build_img(self, packets):
@@ -209,7 +224,6 @@ class FCN(multiprocessing.Process):
             packet['fcn_data'] = img[0:packet['dest_shape'][0],
                                      0:packet['dest_shape'][1]]
            
-    
     def write_img(self, packets):
         while(len(packets) > 0):
             packet = packets.pop(0)
@@ -221,17 +235,16 @@ class FCN(multiprocessing.Process):
 
     def run(self):
         fcn = self.init_caffe()
-        act_packets = []
-        parts_meta = []
+        in_packets = {in_key: [] for in_key in fcn.inputs}
+        parts_meta = {in_key: [] for in_key in fcn.inputs}
         
-        flag_batch = True
+        flag_read = True
         
-        while(flag_batch):
-            flag_batch = self.fetch_batch(self.in_queue, act_packets,
-                                          parts_meta)
+        while(flag_read):
+            flag_read = self.read(self.in_queue, in_packets, parts_meta)
             
             batch_size = self.batch_size
-            n_parts_meta = len(parts_meta)
+            n_parts_meta = len(parts_meta[self.in_blob])
             if self.batch_size > n_parts_meta:
                 batch_size = n_parts_meta
             
@@ -240,7 +253,7 @@ class FCN(multiprocessing.Process):
                 self.feed_fcn(fcn, parts_meta, batch_size)
                 fcn.forward()
                 stop_feed = time.clock()
-                done_packets = self.gather_parts(fcn, act_packets, parts_meta,
+                done_packets = self.gather_parts(fcn, in_packets, parts_meta,
                                                  batch_size)
                 stop_gather = time.clock()
                 self.build_img(done_packets)
@@ -248,7 +261,7 @@ class FCN(multiprocessing.Process):
                 self.write_img(done_packets)
                 stop_write = time.clock()
                 
-                n_parts_meta = len(parts_meta)
+                n_parts_meta = len(parts_meta[self.in_blob])
                 if self.batch_size > n_parts_meta:
                     batch_size = n_parts_meta
                 
