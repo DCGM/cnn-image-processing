@@ -55,10 +55,18 @@ class FCN(multiprocessing.Process):
         self.log.info(" batch size: {}".format(self.batch_size))
         
         fcn = caffe.Net(self.deploy, self.caffe_weights, caffe.TEST)
-        dim_y, dim_x, dim_z = self.patch_size
-        fcn.blobs[self.in_blob].reshape(self.batch_size, dim_z, dim_y, dim_x)
+        
+        orig_shape = np.asarray(fcn.blobs[self.in_blob].data.shape)
+        scale_shape = self.patch_size[[2,0,1]] / orig_shape[1:]
+        
+        for in_key in fcn.inputs:
+            orig_shape = np.asarray(fcn.blobs[self.in_blob].shape)
+            new_z, new_y, new_x = (orig_shape[1:] * scale_shape).astype(np.int)
+            fcn.blobs[in_key].reshape(self.batch_size, new_z, new_y, new_x)
+        
         if self.out_blob == None:
             self.out_blob = fcn.blobs.keys()[-1]  
+
         fcn.reshape()
         
         out_blob_shape = np.asarray(fcn.blobs[self.out_blob].shape)
@@ -73,8 +81,8 @@ class FCN(multiprocessing.Process):
         """
         Split the data of packet into user defined size parts.
         Data is split into patches overlapped by the border reduced by the
-        feed forwarding through the network. The right most columne and bottom
-        rowas are padded to fullfill the FCN in_patch size.
+        feed forwarding through the network. The right most column and bottom
+        row are padded to be divideable by the FCN in_patch size * .
         """
         parts = []
         
@@ -119,13 +127,32 @@ class FCN(multiprocessing.Process):
         i_batch = 0
         start_fetch = time.clock()  
         for packets in iter(queue.get, None):
+            dest_shape = None
+            orig_shape = None
             for packet in packets:
-                packet['parts'] = []
-                split_packet = self.split(packet)
-                parts_meta.extend(split_packet)
-                act_packets.append(packet)
-                i_batch += len(split_packet)
-                i_patch += 1
+                if packet['label'] == self.in_blob:
+                    
+                    if 'orig_shape' in packet:
+                        orig_shape = packet['orig_shape']
+                    packet['parts'] = []
+                    split_packet = self.split(packet)
+                    parts_meta.extend(split_packet)
+                    act_packets.append(packet)
+                    i_batch += len(split_packet)
+                    i_patch += 1
+                elif packet['label'] == 'shape':
+                    dest_shape = packet['data'].shape
+            
+            if dest_shape != None:
+                dest_shape = np.asarray(dest_shape)
+            elif orig_shape != None:
+                dest_shape = np.asarray(orig_shape)
+            else:
+                data_shape = np.asarray(act_packets[-1]['data'].shape[0:2])
+                dest_shape = self.out_scale * data_shape
+            
+            act_packets[-1]['dest_shape'] = dest_shape 
+            
             if i_batch >= self.batch_size:            
                 break
         
@@ -177,9 +204,11 @@ class FCN(multiprocessing.Process):
                 y_ind, x_ind = (pivot*part_shape[0:2]).astype(np.int)
                 img[y_ind:y_ind+part_shape[0],
                     x_ind:x_ind+part_shape[1]] = img_packet['data']
-            data_shape = packet['data'].shape
-            packet['fcn_data'] = img[0:data_shape[0]*self.out_scale[0],
-                                     0:data_shape[1]*self.out_scale[1]]
+#             data_shape = packet['data'].shape
+            
+            packet['fcn_data'] = img[0:packet['dest_shape'][0],
+                                     0:packet['dest_shape'][1]]
+           
     
     def write_img(self, packets):
         while(len(packets) > 0):
@@ -191,7 +220,6 @@ class FCN(multiprocessing.Process):
             self.log.info("Written: {}".format(write_image_name))
 
     def run(self):
-        
         fcn = self.init_caffe()
         act_packets = []
         parts_meta = []
