@@ -33,15 +33,17 @@ class PyDeBlockJPEG(caffe.Layer):
     
     def backward(self, top, propagate_down, bottom):           
         for i_top in xrange(len(top)):
+            if propagate_down[i_top] != True:
+                continue
             for i_diff in xrange(len(top[0].diff)):
                 top_diff = top[i_top].diff[i_diff].transpose([1,2,0]) #[y x z]
                 bottom_diff = bottom[i_top].diff[i_diff]
                 step = 8
-                for y_id in xrange(bottom_diff.shape[0]):
-                    for x_id in xrange(bottom_diff.shape[1]):
+                for y_id in xrange(bottom_diff.shape[1]):
+                    for x_id in xrange(bottom_diff.shape[2]):
                         in_y = step*y_id
                         in_x = step*x_id 
-                        bottom_diff[y_id, x_id] = top_diff[in_y:in_y+step, in_x:in_x+step].reshape(64)
+                        bottom_diff[..., y_id, x_id] = top_diff[in_y:in_y+step, in_x:in_x+step].reshape(64)
     
     def deblock(self, data):
         img = np.zeros([ dim * 8 for dim in data.shape[0:2]], dtype=np.double)
