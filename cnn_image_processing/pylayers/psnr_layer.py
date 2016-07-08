@@ -79,10 +79,6 @@ class PyPSNRL(caffe.Layer):
         
         if self.iterations % self.print_step == 0: 
             avg_psnr = [sum(val)/val.size for val in self.psnr_buffers]
-                        
-#             avg_msg = " PSNR average of {} samples".format(self.psnr_buffers[0].size)
-#             self.log.info(avg_msg)
-            
             msg = " ".join(' PSNR bottom[{}]: {}'
                         .format(*val) for val in enumerate(avg_psnr))
             if len(l_psnr) < 2:
