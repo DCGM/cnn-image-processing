@@ -13,7 +13,6 @@ import logging
 import os
 
 from filters.writers import ImageWriter
-from cProfile import label
 
 class FCN(multiprocessing.Process):
     """

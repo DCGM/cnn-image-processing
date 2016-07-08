@@ -12,8 +12,8 @@ import argparse
 from collections import OrderedDict
 import cnn_image_processing as ci
 import signal
-signal.signal(signal.SIGINT, lambda x,y: sys.exit(1))
 
+signal.signal(signal.SIGINT, lambda x,y: sys.exit(1))
 LOGGER = logging.getLogger("cnn_image_processing")
 
 def parse_phase(conf):
