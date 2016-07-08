@@ -347,9 +347,10 @@ class ActivationStat(object):
     def __init__(self, net, historySize=20):
         self.historySize = historySize
         # list of tuples (blobs_name, blob_data) related to learnable params
-        learn_param_keys = net.params.viewkeys() & net.blobs.viewkeys()
+#         learn_param_keys = net.params.viewkeys() & net.blobs.viewkeys()
+        learn_param_keys =[key for key in net.params if key in net.blobs]
         self.list_blobs = [(key, RoundBuffer(historySize) )
-                      for key in sorted(learn_param_keys)]
+                      for key in learn_param_keys]
         # dict of params
 #         self.dict_params = {key: RoundBuffer(historySize)
 #                       for key in net.params.keys()}
@@ -374,11 +375,23 @@ class ActivationStat(object):
 #             self.log.debug(' BLOB {} {} {}'.format(l, mean, sdev))
 
     def print_stats(self):
+        format_msg = []
         for key, data in self.list_blobs:
             avg = sum(data) / data.size
             bins=[-10000, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
                   0.99, 10000]
             hist, bins = np.histogram(avg, bins)
             hist = hist * (1.0/np.sum(hist))
-            msg = " ".join(["{0:3}".format(int(val*100+0.5)) for val in hist])
-            self.log.info(":".join([key,msg]))
+            msg_list = ["{0:3}".format(int(val*100+0.5)) for val in hist]
+            msg_list.insert(0, key+":")
+            format_msg.append(msg_list)
+        
+        widths = [max(map(len, col)) for col in zip(*format_msg)]
+        for row in format_msg:
+            msg = "  ".join((val.ljust(width) for val, width in
+                             zip(row, widths)))
+            self.log.info(msg)
+        
+            
+            
+            
