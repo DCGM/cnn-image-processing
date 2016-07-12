@@ -1,0 +1,31 @@
+Provider:
+  Parameters: {loop: false}
+  TFilters:
+  - TFilter:
+      Filters:
+      - CoefNpyTxtReader: {n_channels: 128}
+      - ImageReader: {grayscale: true}
+  - TFilter:
+      Filters:
+      - MulQuantTable:
+      - Pass:
+  - TFilter:
+      Filters:
+      - Div: {val: 1024.}
+      - Pass:
+  - TFilter:
+      Filters:
+      - Label: {name: 'coef'}
+      - Label: {name: 'shape'}
+
+provider_queue_size: 5
+
+FCN:
+  batch_size: 24
+  patch_size: [32,32,64]
+  borders: [1,1]
+  in_blob: 'coef'
+  out_blob: 'scale-idct-sum-conv-5'
+  caffe_mode: 'gpu'
+  gpu_id: 0
+

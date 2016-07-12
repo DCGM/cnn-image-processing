@@ -1,0 +1,119 @@
+Train:
+  Provider:
+    Parameters: {loop: true}
+    TFilters:
+    - TFilter:
+        Filters:
+        - CoefNpyTxtReader: {n_channels: 128}
+        - CoefNpyTxtReader: {n_channels: 64}
+    - TFilter:
+        Filters:
+        - MulQuantTable:
+        - Pass:
+    - TFilter:
+        Filters:
+        - Div: {val: 1024.}
+        - Div: {val: 1024.}
+    - TFilter:
+        Filters:
+        - Label: {name: coef}
+        - Label: {name: label}
+
+  Sampler:
+    Parameters: {buffer_size: 200, samples: 50}
+    TFilters:
+    - TCropCoef8ImgFilter:
+        Filters:
+        - {LTCrop: null}
+        - {LTCrop: null}
+        Parameters: {crop_size: 8}
+  provider_queue_size: 5
+  sample_queue_size: 512
+
+Test:
+  - 00_inria:
+      Sampler:
+        Parameters: {buffer_size: 20, samples: 4}
+        TFilters:
+        - TCropCoef8ImgFilter:
+            Filters:
+            - {LTCrop: null}
+            - {LTCrop: null}
+            Parameters: {crop_size: 16}
+      provider_queue_size: 5
+      sample_queue_size: 100
+
+  - 01_bsr:
+      Provider:
+        Parameters: {loop: true}
+        TFilters:
+        - TFilter:
+            Filters:
+            - CoefNpyTxtReader: {n_channels: 128}
+            - CoefNpyTxtReader: {n_channels: 64}
+        - TFilter:
+            Filters:
+            - MulQuantTable:
+            - Pass:
+        - TFilter:
+            Filters:
+            - Div: {val: 1024.}
+            - Pass:
+        - TFilter:
+            Filters:
+            - Label: {name: coef}
+            - Label: {name: label}
+      Sampler:
+        Parameters: {buffer_size: 10, samples: 8}
+        TFilters:
+        - TCropCoef8ImgFilter:
+            Filters:
+            - {LTCrop: null}
+            - {LTCrop: null}
+            Parameters: {crop_size: 20}
+      provider_queue_size: 5
+      sample_queue_size: 320
+
+  - 02_live1:
+      Provider:
+        Parameters: {loop: true}
+        TFilters:
+        - TFilter:
+            Filters:
+            - CoefNpyTxtReader: {n_channels: 128}
+            - CoefNpyTxtReader: {n_channels: 64}
+        - TFilter:
+            Filters:
+            - MulQuantTable:
+            - Pass:
+        - TFilter:
+            Filters:
+            - Div: {val: 1024.}
+            - Pass:
+        - TFilter:
+            Filters:
+            - Label: {name: coef}
+            - Label: {name: label}
+      Sampler:
+        Parameters: {buffer_size: 10, samples: 64}
+        TFilters:
+        - TCropCoef8ImgFilter:
+            Filters:
+            - {LTCrop: null}
+            - {LTCrop: null}
+            Parameters: {crop_size: 20}
+      provider_queue_size: 5
+      sample_queue_size: 320
+
+
+Trainer:
+  batch_size: 32
+  max_iter: 250000
+  caffe_mode: 'gpu'
+  gpu_id: 0
+  caffe_solverstate:
+  caffe_weights:
+  test_iter: 25
+  test_interval: 1000
+  stat_interval: 100
+

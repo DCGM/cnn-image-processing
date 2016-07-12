@@ -344,7 +344,7 @@ class JPGBlockReshape(object):
         return self.reshape(packet)
 
 
-class MullQuantTable(object):
+class MulQuantTable(object):
     """
     Mul thepacket's data with its quant table stored in [y, x, 64:]
     """

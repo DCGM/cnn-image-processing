@@ -80,11 +80,13 @@ layer { name: 'conv-5' type: 'Convolution'
 layer { name: 'Crop-label' type: 'Crop' 
         top: 'crop-label' bottom: 'label' bottom: 'conv-5'
         crop_param{ offset: 1 axis: 2}
+        propagate_down: false  propagate_down: false
 }
 
 layer { name: 'Crop-coef' type: 'Crop' 
         top: 'crop-coef' bottom: 'coef' bottom: 'conv-5'
         crop_param{ offset: 1 axis: 2}
+        propagate_down: false  propagate_down: false
 }
 
 layer { name: 'Sum' type: 'Eltwise' 
@@ -92,83 +94,86 @@ layer { name: 'Sum' type: 'Eltwise'
         eltwise_param { operation: SUM }
 }
 
-layer { name: 'LOSS-coef' type: 'Python'
+layer { name: 'IDCT' type: 'Python'
+        top:    'idct-sum-conv-5' top:    'idct-label' top:    'idct-coef'
+        bottom: 'sum-conv-5'      bottom: 'crop-label' bottom: 'crop-coef'
+        python_param { module: 'cnn_image_processing.pylayers' layer: 'PyIDCTL'
+                       param_str: ""}
+        propagate_down: true  propagate_down: false propagate_down: false
+}
+
+layer { name: 'LOSS-pix' type: 'Python'
         top:    'loss'
-        bottom: 'sum-conv-5'  bottom: 'crop-label'
-        python_param { module: 'cnn_image_processing' layer: 'PyEuclideanLossLayer'
+        bottom: 'idct-sum-conv-5'  bottom: 'idct-label'
+        python_param { module: 'cnn_image_processing.pylayers' layer: 'PyEuclideanLossL'
                        param_str: "pixel_norm: true, print: False, print_iter: 1"
         }
         loss_weight: 1
         propagate_down: true propagate_down: false
 }
 
-layer { name: 'IDCT' type: 'Python'
-        top:    'idct-sum-conv-5' top:    'idct-label' top:    'idct-coef'
-        bottom: 'sum-conv-5'      bottom: 'crop-label' bottom: 'crop-coef'
-        python_param { module: 'cnn_image_processing' layer: 'PyIDCTL'
-                       param_str: ""}
-}
-
 layer { name: 'Scale-CNN' type: 'Power'
-        bottom: 'idct-sum-conv-5' top: 'idct-sum-conv-5'
+        bottom: 'idct-sum-conv-5' top: 'scale-idct-sum-conv-5'
         power_param { power: 1 scale: 1024 shift: 128 }
 }
 
 layer { name: 'Scale-Label' type: 'Power'
-        bottom: 'idct-label' top: 'idct-label'
+        bottom: 'idct-label' top: 'scale-idct-label'
         power_param { power: 1 scale: 1024 shift: 128 }
+        propagate_down: false 
 }
 
 layer { name: 'Scale-coef' type: 'Power'
         bottom: 'idct-coef' top: 'idct-coef'
         power_param { power: 1 scale: 1024 shift: 128 }
+        propagate_down: false
 }
 
 layer { name: 'PSNR-Train' type: 'Python'
-        bottom: 'idct-sum-conv-5' bottom: 'idct-coef' bottom: 'idct-label'
-        python_param: { module: 'cnn_image_processing' layer: 'PyPSNRL'
+        bottom: 'scale-idct-sum-conv-5' bottom: 'idct-coef' bottom: 'scale-idct-label'
+        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyPSNRL'
                        param_str: "max: 255, print_step: 50, history_size: 250, plot_graph: True, graph_name: tr-iPSNR.pdf" }
        include { phase: TRAIN }
 }
 
 layer { name: 'PSNR-Test' type: 'Python'
-        bottom: 'idct-sum-conv-5' bottom: 'idct-coef' bottom: 'idct-label'
-        python_param: { module: 'cnn_image_processing' layer: 'PyPSNRL'
+        bottom: 'scale-idct-sum-conv-5' bottom: 'idct-coef' bottom: 'scale-idct-label'
+        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyPSNRL'
                         param_str: "max: 255, print_step: 1, history_size: 250, plot_graph: True, graph_name: te-inria-iPSNR.pdf" }
         include: { phase: TEST
                    stage: "inria" }
 }
 
 layer { name: 'PSNR-Test' type: 'Python'
-        bottom: 'idct-sum-conv-5' bottom: 'idct-coef' bottom: 'idct-label'
-        python_param: { module: 'cnn_image_processing' layer: 'PyPSNRL'
+        bottom: 'scale-idct-sum-conv-5' bottom: 'idct-coef' bottom: 'scale-idct-label'
+        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyPSNRL'
                         param_str: "max: 255, print_step: 1, history_size: 50, plot_graph: True, graph_name: te-bsr-iPSNR.pdf" }
         include: { phase: TEST
                    stage: "bsr" }
 }
 
 layer { name: 'PSNR-Test' type: 'Python'
-        bottom: 'idct-sum-conv-5' bottom: 'idct-coef' bottom: 'idct-label'
-        python_param: { module: 'cnn_image_processing' layer: 'PyPSNRL'
+        bottom: 'scale-idct-sum-conv-5' bottom: 'idct-coef' bottom: 'scale-idct-label'
+        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyPSNRL'
                         param_str: "max: 255, print_step: 1, history_size: 50, plot_graph: True, graph_name: te-live1-iPSNR.pdf" }
         include: { phase: TEST
                    stage: "live1" }
 }
 
 #layer { name: 'Visualization-CNN' type: 'Python'
-#        bottom: 'idct-sum-conv-5'
-#        python_param: { module: 'cnn_image_processing' layer: 'PyVisLayer'
+#        bottom: 'scale-idct-sum-conv-5'
+#        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyVisL'
 #                        param_str: 'scale: 4, norm: 255, mean: 0 ,name: cnn'}
 #}
 #
 #layer { name: 'Visualization-coef' type: 'Python' 
 #        bottom: 'idct-coef'
-#        python_param: { module: 'cnn_image_processing' layer: 'PyVisLayer'
+#        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyVisL'
 #                        param_str: 'scale: 4, norm: 255, mean: 0, name: jpeg'}}
 #
 #layer { name: 'Visualization-label' type: 'Python'
-#        bottom: 'idct-label'
-#        python_param: { module: 'cnn_image_processing' layer: 'PyVisLayer'
+#        bottom: 'scale-idct-label'
+#        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyVisL'
 #                         param_str: 'scale: 4, norm: 255, mean: 0 ,name: label'}
 #}
-#
+

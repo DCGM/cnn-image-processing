@@ -8,7 +8,7 @@ Provider:
       - ImageReader: {grayscale: True}
   - TFilter:
       Filters:
-      - MullQuantTable:
+      - MulQuantTable:
       - Pass:
       - Pass:
   - TFilter:
@@ -34,8 +34,8 @@ Provider:
       - Pass: 
   - TFilter:
       Filters:
-      - Preview: {scale: 0.004} 
-      - Preview: {scale: 0.004}
-      - Preview: {scale: 0.004}
+      - Preview: {norm: 256} 
+      - Preview: {norm: 256}
+      - Preview: {norm: 256}
 
 
