@@ -12,6 +12,7 @@ import time
 import numpy as np
 from .utils import RoundBuffer
 
+
 class Sampler(multiprocessing.Process):
     """
       Sampler reads the data from in_queue, stores them in to the
@@ -20,7 +21,7 @@ class Sampler(multiprocessing.Process):
     """
 
     def __init__(self, in_queue=None, out_queue=None, buffer_size=100,
-                t_filters=None, samples=1, RNG=None):
+                 t_filters=None, samples=1, RNG=None):
         """
         Sampler constructor
         Args:
@@ -67,7 +68,7 @@ class Sampler(multiprocessing.Process):
                 if rn_packets is None:
                     break
                 rn_packets = t_filter(rn_packets)
-            
+
             if rn_packets != None:
                 self.out_queue.put(rn_packets)
 

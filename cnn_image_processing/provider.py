@@ -9,6 +9,7 @@ from __future__ import print_function
 import multiprocessing
 import logging
 
+
 class Provider(multiprocessing.Process):
     """
     Exec all the TupleReaders
@@ -17,8 +18,8 @@ class Provider(multiprocessing.Process):
     data from the standard input in case of using fileinput.input().
     """
 
-    def __init__(self, file_list=None, out_queue=None , t_readers=None,
-                loop=False):
+    def __init__(self, file_list=None, out_queue=None, t_readers=None,
+                 loop=False):
         """
         Provider constructor
         Args:
@@ -53,15 +54,15 @@ class Provider(multiprocessing.Process):
         """
         if t_readers is not None:
             self.log.debug("Number of tuple readers: {}".
-                          format(len(self.t_readers)))
+                           format(len(self.t_readers)))
             self.log.debug("Number of readers in tuple reader: {}".
-                          format([ reader.n_filters() for reader in
-                                  self.t_readers]))
+                           format([reader.n_filters() for reader in
+                                   self.t_readers]))
         else:
             self.log.warning("No tuple reader defined.")
-        
+
         self.log.debug("File list: {}".format(self.file_list))
-        
+
         with open(file_list) as flist:
             for line in flist:
                 packets = [{'path': path.strip()} for path in line.split()]
@@ -90,6 +91,6 @@ class Provider(multiprocessing.Process):
                     self.provide_loop(self.t_readers, self.file_list)
         except EnvironmentError as ex:
             self.log.error(ex)
-        
+
         if self.out_queue is not None:
             self.out_queue.put(None)

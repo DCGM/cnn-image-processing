@@ -4,18 +4,21 @@ Created on May 27, 2016
 @author: isvoboda
 '''
 
-from factory import ObjectFactory
-from provider import Provider
-from sampler import Sampler
-from trainer import Trainer
-from fcn import FCN
+from __future__ import print_function
+
+from .factory import ObjectFactory
+from .provider import Provider
+from .sampler import Sampler
+from .trainer import Trainer
+from .fcn import FCN
+
 
 class Creator(object):
     """
     Create the readers and filters according the configuration file.
     """
     f_create = ObjectFactory.create_object
-    
+
     @classmethod
     def parse_filters(cls, l_filters):
         """
@@ -28,8 +31,9 @@ class Creator(object):
                 new_filters.append(cls.f_create(fil_id, **fil_params))
             else:
                 new_filters.append(cls.f_create(fil_id))
-        
-        return new_filters 
+
+        return new_filters
+
     @classmethod
     def parse_tuples(cls, tuples):
         """
@@ -52,6 +56,7 @@ class Creator(object):
                 tup_filters.append(t_fils)
 
         return tup_filters
+
     @classmethod
     def create_provider(cls, config):
         """
@@ -60,7 +65,8 @@ class Creator(object):
         tuple_filters = cls.parse_tuples(config['TFilters'])
         parameters = config['Parameters']
         return Provider(t_readers=tuple_filters, **parameters)
-    @classmethod   
+
+    @classmethod
     def create_sampler(cls, config):
         """
         Creates sampler
@@ -68,13 +74,14 @@ class Creator(object):
         tuple_filters = cls.parse_tuples(config['TFilters'])
         parameters = config['Parameters']
         return Sampler(t_filters=tuple_filters, **parameters)
+
     @classmethod
     def create_trainer(cls, config):
         """
         Creates the trainer.
         """
         return Trainer(**config)
-    
+
     @classmethod
     def create_fcn(cls, config):
         """

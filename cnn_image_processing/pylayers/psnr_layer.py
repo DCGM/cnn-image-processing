@@ -12,7 +12,9 @@ import logging
 import numpy as np
 from matplotlib import pyplot as plt
 from ..utils import RoundBuffer
+# pylint: disable=import-error,no-name-in-module
 from distutils.util import strtobool
+
 
 class PyPSNRL(caffe.Layer):
     """
@@ -28,7 +30,11 @@ class PyPSNRL(caffe.Layer):
             Ith iteration to print the PSNR
             Default is 50
     """
+
     def setup(self, bottom, top):
+        """
+        Setup the layer
+        """
         self.log = logging.getLogger(__name__ + ".PyPSNRL")
         if len(bottom) < 2 or len(bottom) > 3:
             raise Exception("Need two inputs at least or 3 at most.")
@@ -55,55 +61,67 @@ class PyPSNRL(caffe.Layer):
             self.graph_name = self.dict_param['graph_name']
         else:
             self.graph_name = 'iPSNR.png'
-        
+
         self.iterations = 0
         self.psnr_buffers = [RoundBuffer(max_size=self.history_size)
-                             for _ in xrange(len(bottom)-1)]
+                             for _ in xrange(len(bottom) - 1)]
         self.history = []
         if self.plot_graph:
             self.fig = plt.figure()
-            self.ax = self.fig.add_subplot(111)
-       
+            self.axe = self.fig.add_subplot(111)
+
     def reshape(self, bottom, top):
+        """
+        Reshape the activation - data blobs
+        """
         if len(top) > len(bottom):
             raise Exception("Layer produce more outputs then has its inputs.")
-        
+
         for i_input in xrange(len(top)):
             top[i_input].reshape(*bottom[i_input].data.shape)
-    
+
     def forward(self, bottom, top):
+        """
+        Feed forward
+        """
         l_psnr = self.psnr(bottom)
         for i_val, val in enumerate(l_psnr):
             for psnr_val in val:
                 self.psnr_buffers[i_val].append_round(psnr_val)
-        
-        if self.iterations % self.print_step == 0: 
-            avg_psnr = [sum(val)/val.size for val in self.psnr_buffers]
+
+        if self.iterations % self.print_step == 0:
+            avg_psnr = [sum(val) / val.size for val in self.psnr_buffers]
             msg = " ".join(' PSNR bottom[{}]: {}'
-                        .format(*val) for val in enumerate(avg_psnr))
+                           .format(*val) for val in enumerate(avg_psnr))
             if len(l_psnr) < 2:
                 self.log.info(msg)
             elif len(l_psnr) == 2:
                 ipsnr = avg_psnr[0] - avg_psnr[1]
                 ipsnr_msg = " iPSNR: {} ".format(ipsnr)
                 self.log.info(" ".join([ipsnr_msg, msg]))
-                
+
                 if self.plot_graph:
                     self.history.append(ipsnr)
                     self.plot()
-            
+
         for i_data in xrange(len(top)):
             top[i_data].data[...] = bottom[i_data].data
-        
-        self.iterations += 1 
-    
+
+        self.iterations += 1
+
     def backward(self, top, propagate_down, bottom):
+        """
+        Layer bacpropagation
+        """
         for i_diff in xrange(len(top)):
             bottom[i_diff].diff[...] = top[i_diff].diff
-    
+
     def psnr(self, bottom):
+        """
+        Compute the PSNR of bottoms
+        """
         results = []
-        for i_input in xrange(len(bottom)-1):
+        for i_input in xrange(len(bottom) - 1):
             diff = (bottom[-1].data - bottom[i_input].data).astype(np.float64)
             bottom_psnr = []
             for i_img in xrange(diff.shape[0]):
@@ -116,10 +134,13 @@ class PyPSNRL(caffe.Layer):
                     bottom_psnr.append(psnr)
             results.append(bottom_psnr)
         return results
-    
+
     def plot(self):
-        self.ax.cla()
-        self.ax.plot(self.history)
-        self.ax.set_xlabel("Iteration / {}".format(self.print_step))
-        self.ax.set_ylabel("iPSNR")
+        """
+        Plot the iPSNR history to graph
+        """
+        self.axe.cla()
+        self.axe.plot(self.history)
+        self.axe.set_xlabel("Iteration / {}".format(self.print_step))
+        self.axe.set_ylabel("iPSNR")
         self.fig.savefig(self.graph_name)

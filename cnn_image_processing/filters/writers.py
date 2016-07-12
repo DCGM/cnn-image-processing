@@ -9,6 +9,7 @@ import numpy as np
 import os
 import logging
 
+
 class ImageWriter(object):
     """
     Write images.
@@ -34,6 +35,7 @@ class CoefNpyTxtWriter(object):
     """
     Write numpy nd arrays of jpeg coefs.
     """
+
     def __init__(self, d_path=None):
         """
         ImageWriter constructor
