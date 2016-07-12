@@ -1,9 +1,13 @@
-from .crop_layer import *
-from .psnr_layer import *
-from .loss_layer import *
-from .vis_layer import *
-from .add_layer import *
-from .sub_layer import *
-from .idct_layer import *
-from .decode_jpeg_q20 import *
-from .block_reshape_layer import *
+"""
+Python caffe layers
+"""
+
+from .crop_layer import PyCropL
+from .psnr_layer import PyPSNRL
+from .loss_layer import PyEuclideanLossL
+from .vis_layer import PyVisL
+from .add_layer import PyAddL
+from .sub_layer import PySubL
+from .idct_layer import PyIDCTL
+from .decode_jpeg_q20_layer import PyDecodeJPEGQ20L
+from .deblock_layer import PyDeBlockL

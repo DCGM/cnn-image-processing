@@ -6,7 +6,7 @@ Created on May 27, 2016
 
 from __future__ import print_function
 
-import cnn_image_processing.filters as filters
+from . import filters
 
 
 class ObjectFactory(object):

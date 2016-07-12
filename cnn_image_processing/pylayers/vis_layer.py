@@ -11,7 +11,7 @@ import cv2
 MODULE_LOGER = logging.getLogger(__name__)
 
 
-class PyVisLayer(caffe.Layer):
+class PyVisL(caffe.Layer):
     """
     The visualisation layer
     Args:

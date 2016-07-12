@@ -343,7 +343,7 @@ class ActivationStat(object):
             msg_list = ["{0:3}".format(int(val * 100 + 0.5)) for val in hist]
             msg_list.insert(0, key + ":")
             format_msg.append(msg_list)
-
+        # pylint: disable=bad-builtin
         widths = [max(map(len, col)) for col in zip(*format_msg)]
         for row in format_msg:
             msg = "  ".join((val.ljust(width) for val, width in

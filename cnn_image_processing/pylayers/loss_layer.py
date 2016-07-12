@@ -17,8 +17,9 @@ from distutils.util import strtobool
 from ..utils import RoundBuffer
 
 
-class PyEuclideanLossLayer(caffe.Layer):
-    """The Euclidian loss layer takes as input the 2 or 3 bottoms,
+class PyEuclideanLossL(caffe.Layer):
+    """
+    The Euclidian loss layer takes as input the 2 or 3 bottoms,
     bottom[0] is backward propagated.
     bottom[1] except bottom[1] == last bottom is used to compute the iPSNR.
     iPSNR is computed as PSNR(bottom[0]) - PSNR(bottom[1])
@@ -71,7 +72,7 @@ class PyEuclideanLossLayer(caffe.Layer):
         # the module name - the filename-that needs to be in $PYTHONPATH
         module: 'cnn_image_processing'
         # the layer name - the class name in the module
-        layer: 'PyEuclideanLossLayer'
+        layer: 'PyEuclideanLossL'
         param_str: "pixel_norm: True, psnr_max: 255, vis: True, vis_scale: 6,
         vis_mean: 127, vis_normalize: 0.004, print: True, print_iter: 50}"
       }

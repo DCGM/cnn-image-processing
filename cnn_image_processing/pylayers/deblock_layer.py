@@ -12,7 +12,7 @@ import logging
 MODULE_LOGER = logging.getLogger(__name__)
 
 
-class PyDeBlockJPEG(caffe.Layer):
+class PyDeBlockL(caffe.Layer):
     """
     Reshape the input data [64, y/8, x/8] to [1, y, x]
     Inherits from caffe.Layer
@@ -77,7 +77,7 @@ class PyDeBlockJPEG(caffe.Layer):
             for x_coef in xrange(data.shape[1]):
                 in_x = step * x_coef
                 in_y = step * y_coef
-                img[in_y:in_y + step, in_x:in_x + step] = data[y_coef, x_coef]\
-                    .reshape([8, 8])
+                img[in_y:in_y + step,
+                    in_x:in_x + step] = data[y_coef, x_coef].reshape([8, 8])
 
         return np.expand_dims(img, axis=2)
