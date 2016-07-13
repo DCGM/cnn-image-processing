@@ -4,8 +4,9 @@ Created on Apr 7, 2016
 
 @author: isvoboda
 '''
-import sys
-import multiprocessing
+
+from __future__ import print_function
+
 import logging
 import yaml
 import argparse
@@ -14,7 +15,7 @@ import cnn_image_processing as ci
 LOGGER = logging.getLogger("cnn_image_processing")
 
 
-def main(argv):
+def main():
     '''
     Entry point
     Args:
@@ -57,4 +58,4 @@ def main(argv):
     train_provider.run()
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()

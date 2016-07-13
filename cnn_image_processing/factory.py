@@ -29,7 +29,7 @@ class ObjectFactory(object):
                  'Add': filters.Add,
                  'Sub': filters.Sub,
                  'JPGBlockReshape': filters.JPGBlockReshape,
-                 'MullQuantTable': filters.MullQuantTable,
+                 'MulQuantTable': filters.MulQuantTable,
                  'Preview': filters.Preview,
                  'DecodeDCT': filters.DecodeDCT,
                  'CodeDCT': filters.CodeDCT,
