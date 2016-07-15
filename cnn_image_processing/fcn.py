@@ -239,9 +239,18 @@ class FCN(multiprocessing.Process):
                 img[y_ind:y_ind + part_shape[0],
                     x_ind:x_ind + part_shape[1]] = img_packet['data']
 #             data_shape = packet['data'].shape
-
-            packet['fcn_data'] = img[0:packet['dest_shape'][0],
-                                     0:packet['dest_shape'][1]]
+            padding = np.asarray([[0, 0], [0, 0], [0, 0]], np.int)
+            if 'padding' in packet:
+                padding = packet['padding']
+            pad_l, pad_r = padding[0] * self.out_scale[0]
+#             pad_yr = padding[0, 1] * self.out_scale[0]
+            pad_t, pad_b = padding[1] * self.out_scale[1]
+#             pad_xb = padding[1, 1] * self.out_scale[1]
+            from_left = pad_l
+            to_right = packet['dest_shape'][0] + pad_r
+            from_top = pad_t
+            to_bottom = packet['dest_shape'][1] + pad_b
+            packet['fcn_data'] = img[from_left:to_right, from_top:to_bottom]
 
     def write_img(self, packets):
         """

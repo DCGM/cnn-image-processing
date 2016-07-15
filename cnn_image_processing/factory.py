@@ -33,7 +33,8 @@ class ObjectFactory(object):
                  'Preview': filters.Preview,
                  'DecodeDCT': filters.DecodeDCT,
                  'CodeDCT': filters.CodeDCT,
-                 'Pad8': filters.Pad8}  # Static attribute
+                 'Pad8': filters.Pad8,
+                 'PadCoefMirror': filters.PadCoefMirror}  # Static attribute
 
     @classmethod
     def create_object(cls, id_object, **kwargs):
@@ -42,26 +43,28 @@ class ObjectFactory(object):
         In case the id_object has not yet been registered than add it.
         """
         if not cls.factories.has_key(id_object):
+            print("Not known filter: {}".format(id_object))
+            return None
             # ToDo eval is not safe - anything could be inserted in.
-            cls.factories[id_object] = \
-                cls.get_class(id_object)
-            print(id_object)
+#             cls.factories[id_object] = \
+#                 cls.get_class(id_object)
+#             print(id_object)
         return cls.factories[id_object](**kwargs)
 
-    @staticmethod
-    def get_class(class_name):
-        """
-        Returns the class of the name class_name
-
-        Args:
-          class_name: name of the class to be referenced (eg module.class)
-        Return:
-          The reference to the class of name class_name
-        """
-        parts = class_name.split(".")
-        module = ".".join(parts[:-1])
-        print(module)
-        mod = __import__(module)
-        for component in parts[1:]:
-            mod = getattr(mod, component)
-        return mod
+#     @staticmethod
+#     def get_class(class_name):
+#         """
+#         Returns the class of the name class_name
+# 
+#         Args:
+#           class_name: name of the class to be referenced (eg module.class)
+#         Return:
+#           The reference to the class of name class_name
+#         """
+#         parts = class_name.split(".")
+#         module = ".".join(parts[:-1])
+#         print(module)
+#         mod = __import__(module)
+#         for component in parts[1:]:
+#             mod = getattr(mod, component)
+#         return mod

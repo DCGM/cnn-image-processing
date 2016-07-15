@@ -1,5 +1,5 @@
 '''
-Fiters
+Filters
 '''
 
 from __future__ import division
@@ -14,7 +14,7 @@ from .. utils import code_dct
 
 # __all__ = ["TFilter", "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul",
 #            "Div", "Add", "Sub", "JPGBlockReshape", "MullQuantTable", "Pass",
-#            "Preview", "DecodeDCT", "CodeDCT", "Pad8"]
+#            "Preview", "DecodeDCT", "CodeDCT", "Pad8", "PadCoefMirror"]
 
 
 class TFilter(object):
@@ -473,3 +473,82 @@ class Pad8(object):
     def __call__(self, packet):
         return self.pad(packet)
 
+
+class PadCoefMirror(object):
+    '''
+    Pad the packet's data representing coefficients by its mirrored view
+    '''
+
+    def __init__(self):
+        '''
+        Cnstructor - initialize the vertical, horizontal and corner swap masks
+        '''
+        self.pad_key = 'padding'
+        
+        self.horizontal = np.asarray([
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            +1, -1, +1, -1, +1, -1, +1, -1
+        ])
+        self.vertical = np.asarray([
+            +1, +1, +1, +1, +1, +1, +1, +1,
+            -1, -1, -1, -1, -1, -1, -1, -1,
+            +1, +1, +1, +1, +1, +1, +1, +1,
+            -1, -1, -1, -1, -1, -1, -1, -1,
+            +1, +1, +1, +1, +1, +1, +1, +1,
+            -1, -1, -1, -1, -1, -1, -1, -1,
+            +1, +1, +1, +1, +1, +1, +1, +1,
+            -1, -1, -1, -1, -1, -1, -1, -1
+        ])
+        self.corner = np.asarray([
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            -1, +1, -1, +1, -1, +1, -1, +1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            -1, +1, -1, +1, -1, +1, -1, +1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            -1, +1, -1, +1, -1, +1, -1, +1,
+            +1, -1, +1, -1, +1, -1, +1, -1,
+            -1, +1, -1, +1, -1, +1, -1, +1
+        ])
+
+    def pad(self, packet):
+        '''
+        Mirror the edge coefficients 64 channel vector representing patch of
+        8x8 pixels
+        '''
+        padding = [(1, 1), (1, 1), (0, 0)]
+        padding_ar = np.asarray(padding, np.int)
+
+        if self.pad_key in packet:
+            packet[self.pad_key] += padding_ar
+        else:
+            packet[self.pad_key] = padding_ar
+
+        pad_data = np.pad(
+            packet['data'], padding, mode='edge')
+
+        for patch in pad_data[1:-1, 0]:
+            patch *= self.horizontal
+        for patch in pad_data[1:-1, -1]:
+            patch *= self.horizontal
+
+        for patch in pad_data[0, 1:-1]:
+            patch *= self.vertical
+        for patch in pad_data[-1, 1:-1]:
+            patch *= self.vertical
+
+        pad_data[0, 0] *= self.corner
+        pad_data[0, -1] *= self.corner
+        pad_data[-1, 0] *= self.corner
+        pad_data[-1, -1] *= self.corner
+
+        packet['data'] = pad_data
+        return packet
+
+    def __call__(self, packet):
+        return self.pad(packet)
