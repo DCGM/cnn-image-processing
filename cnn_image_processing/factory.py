@@ -34,7 +34,9 @@ class ObjectFactory(object):
                  'DecodeDCT': filters.DecodeDCT,
                  'CodeDCT': filters.CodeDCT,
                  'Pad8': filters.Pad8,
-                 'PadCoefMirror': filters.PadCoefMirror}  # Static attribute
+                 'PadCoefMirror': filters.PadCoefMirror,
+                 'JPEG': filters.JPEG,
+                 'ShiftImg': filters.ShiftImg}  # Static attribute
 
     @classmethod
     def create_object(cls, id_object, **kwargs):
@@ -55,7 +57,7 @@ class ObjectFactory(object):
 #     def get_class(class_name):
 #         """
 #         Returns the class of the name class_name
-# 
+#
 #         Args:
 #           class_name: name of the class to be referenced (eg module.class)
 #         Return:

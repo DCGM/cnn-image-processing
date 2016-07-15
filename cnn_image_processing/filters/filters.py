@@ -18,6 +18,7 @@ from .. utils import code_dct
 
 
 class TFilter(object):
+
     "Tuple Filter container."
 
     def __init__(self, filters=None):
@@ -60,6 +61,7 @@ class TFilter(object):
 
 
 class TCropCoef8ImgFilter(TFilter):
+
     """
     Specialized cropper for the n-tupple of jpeg-coef and n-image.
     Crop is obtained only from the image size divideable by 8.
@@ -110,6 +112,7 @@ class TCropCoef8ImgFilter(TFilter):
 
 
 class Crop(object):
+
     """
     Center pivot cropper.
     The center is is obtained as the floor divide op of size.
@@ -158,6 +161,7 @@ class Crop(object):
 
 
 class LTCrop(object):
+
     """
     Left top pivot cropper.
     Args:
@@ -202,6 +206,7 @@ class LTCrop(object):
 
 
 class Label(object):
+
     """
     Label the data - creates the dictionary label_name: data
     """
@@ -227,6 +232,7 @@ class Label(object):
 
 
 class Mul(object):
+
     """
     Multiplies data with the given scalar.
     """
@@ -251,6 +257,7 @@ class Mul(object):
 
 
 class Div(object):
+
     """
     Divides data with the given scalar.
     """
@@ -275,6 +282,7 @@ class Div(object):
 
 
 class Add(object):
+
     """
     Add an value from data.
     """
@@ -294,6 +302,7 @@ class Add(object):
 
 
 class Sub(object):
+
     """
     Subtract an value from data.
     """
@@ -313,6 +322,7 @@ class Sub(object):
 
 
 class JPGBlockReshape(object):
+
     """
     Resample the input packet's data into the u/8 * x/8 * 64 dim data
     """
@@ -345,6 +355,7 @@ class JPGBlockReshape(object):
 
 
 class MulQuantTable(object):
+
     """
     Mul thepacket's data with its quant table stored in [y, x, 64:]
     """
@@ -367,6 +378,7 @@ class MulQuantTable(object):
 
 
 class Pass(object):
+
     "Dummy object passing the data."
 
     def run(self, packet):
@@ -380,6 +392,7 @@ class Pass(object):
 
 
 class Preview(object):
+
     """
     Try to preview the packet's data as the image via OpenCV
     """
@@ -412,6 +425,7 @@ class Preview(object):
 
 
 class DecodeDCT(object):
+
     """
     Decodes the coefs back into the pixels
     """
@@ -432,6 +446,7 @@ class DecodeDCT(object):
 
 
 class CodeDCT(object):
+
     """
     Code the image to coefs data
     """
@@ -452,6 +467,7 @@ class CodeDCT(object):
 
 
 class Pad8(object):
+
     """
     Pad the packet's most left nad bottom data to be divideable by 8
     """
@@ -475,6 +491,7 @@ class Pad8(object):
 
 
 class PadCoefMirror(object):
+
     '''
     Pad the packet's data representing coefficients by its mirrored view
     '''
@@ -484,7 +501,7 @@ class PadCoefMirror(object):
         Cnstructor - initialize the vertical, horizontal and corner swap masks
         '''
         self.pad_key = 'padding'
-        
+
         self.horizontal = np.asarray([
             +1, -1, +1, -1, +1, -1, +1, -1,
             +1, -1, +1, -1, +1, -1, +1, -1,
@@ -533,7 +550,7 @@ class PadCoefMirror(object):
             packet['data'], padding, mode='edge')
 
         for patch in pad_data[1:-1, 0]:
-            patch *= self.horizontal
+            patch = patch * self.horizontal
         for patch in pad_data[1:-1, -1]:
             patch *= self.horizontal
 
@@ -552,3 +569,96 @@ class PadCoefMirror(object):
 
     def __call__(self, packet):
         return self.pad(packet)
+
+
+class JPEG(object):
+
+    '''
+    JPEG filter compress the input data with specified quality
+    '''
+
+    def __init__(self, quality=20):
+        self.qual = quality
+
+    def compress(self, packet):
+        '''
+        Compress the input packet's data with the jpeg encoder
+        '''
+        res, img_str = cv2.imencode('.jpeg', packet['data'],
+                                    [cv2.IMWRITE_JPEG_QUALITY, self.qual])
+        assert res == True
+        img = cv2.imdecode(np.asarray(bytearray(img_str), dtype=np.uint8),
+                           cv2.IMREAD_UNCHANGED)
+        if len(img.shape) == 2:
+            img = img.reshape(img.shape[0], img.shape[1], 1)
+        print('shape: {}'.format(img.shape))
+        packet['data'] = img
+        return packet
+
+    def __call__(self, packet):
+        return self.compress(packet)
+
+
+class ShiftImg(object):
+
+    '''
+    Shift - move packet's data - image
+    '''
+
+    def __init__(self, move_vec=None, mode=None, rng_seed=5):
+        '''
+        Shift the image data by the move_vec
+        First, the image is padded by the symmetric copy of its edge,
+        second the crop is taken of such padded image to obtain the same
+        sized image but moved by the move_vec
+        The move could be fixed or randomly sampled from the uniform dist
+        defined by the move_vec (0, move_vec[0]) for the axe 0 etc.
+
+        args:
+            move_vec: list
+                amount of the data shift, sign defines the direction, where
+                + means shift to left, - shift to right
+            mode: string
+                mode of the shift:
+                    None: default shift according the move_vec
+                    'random': randomly sample from (0, move_vec) with uniform
+                              distribution the amount of shift according the
+                              move_vec
+            rng: numpy random state generator
+                the random state generator seed, default is 5
+        '''
+        self.mode = mode
+        self.move_vec = np.zeros(3) if move_vec == None else move_vec
+        self.rng = np.random.RandomState(rng_seed)
+        assert not (self.mode == 'random' and
+                    all(val == 0 for val in self.move_vec))
+
+    def shift(self, packet):
+        '''
+        Shift data according the move vector with a mirror padding
+        '''
+        padding = []
+        for move in self.move_vec:
+            if move == 0:
+                padding.append((0, 0))
+                continue
+
+            shift = np.abs(move)
+            if self.mode == 'random':
+                shift = self.rng.randint(0, shift)
+
+            if move >= 0:
+                padding.append((0, shift))
+            else:
+                padding.append((shift, 0))
+
+        pad_data = np.pad(packet['data'], padding, mode='symmetric')
+        start_y = padding[0][1]
+        start_x = padding[1][1]
+        shape_y, shape_x, _ = packet['data'].shape
+        packet['data'] = pad_data[start_y:start_y + shape_y,
+                                  start_x:start_x + shape_x]
+        return packet
+
+    def __call__(self, packet):
+        return self.shift(packet)
