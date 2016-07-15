@@ -222,7 +222,7 @@ class FCN(multiprocessing.Process):
 
         return done_packets
 
-    def build_img(self, packets):
+    def compose_img(self, packets):
         """
         Compose the imge from its parts
         """
@@ -290,7 +290,7 @@ class FCN(multiprocessing.Process):
                 done_packets = self.gather_parts(fcn, in_packets, parts_meta,
                                                  batch_size)
                 stop_gather = time.clock()
-                self.build_img(done_packets)
+                self.compose_img(done_packets)
                 stop_compose = time.clock()
                 self.write_img(done_packets)
                 stop_write = time.clock()
