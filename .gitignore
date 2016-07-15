@@ -62,3 +62,6 @@ target/
 .ipynb_checkpoints
 /.pydevproject
 /.project
+
+# VSCode settings
+.vscode
