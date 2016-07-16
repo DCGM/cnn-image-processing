@@ -5,8 +5,8 @@ Filters
 from __future__ import division
 from __future__ import print_function
 
-import cv2
 import logging
+import cv2
 import numpy as np
 
 from .. utils import decode_dct
@@ -578,6 +578,13 @@ class JPEG(object):
     '''
 
     def __init__(self, quality=20):
+        '''
+        JPEG constructor
+
+        args:
+            quality: int
+                The JPEG compression quality
+        '''
         self.qual = quality
 
     def compress(self, packet):
@@ -586,12 +593,11 @@ class JPEG(object):
         '''
         res, img_str = cv2.imencode('.jpeg', packet['data'],
                                     [cv2.IMWRITE_JPEG_QUALITY, self.qual])
-        assert res == True
+        assert res is True
         img = cv2.imdecode(np.asarray(bytearray(img_str), dtype=np.uint8),
                            cv2.IMREAD_UNCHANGED)
         if len(img.shape) == 2:
             img = img.reshape(img.shape[0], img.shape[1], 1)
-        print('shape: {}'.format(img.shape))
         packet['data'] = img
         return packet
 
@@ -628,7 +634,7 @@ class ShiftImg(object):
                 the random state generator seed, default is 5
         '''
         self.mode = mode
-        self.move_vec = np.zeros(3) if move_vec == None else move_vec
+        self.move_vec = np.zeros(3) if move_vec is None else move_vec
         self.rng = np.random.RandomState(rng_seed)
         assert not (self.mode == 'random' and
                     all(val == 0 for val in self.move_vec))

@@ -4,14 +4,14 @@ Created on May 27, 2016
 @author: isvoboda
 '''
 
+import logging
+import os.path
 import cv2
 import numpy as np
-import logging
-import sys
-import os.path
 
 
 class ImageReader(object):
+
     """
     Reads several types of images via OpenCV.
     Always returns the float 3dim numpy array.
@@ -31,14 +31,14 @@ class ImageReader(object):
             path = packet['path']
             img = cv2.imread(path, self.load_flag).astype(np.float32)
             if img is None:
-                self.log.error("Could not read image: {}".format(path))
+                self.log.error("Could not read image: %r", path)
                 return None
-        except cv2.error as err:
-            self.log.error("cv2.error: {}".format(str(err)))
+        except cv2.error:
+            self.log.exception("cv2.error")
         except IOError as ioe:
             print "I/O error({0}): {1}".format(ioe.errno, ioe.strerror)
         except:
-            self.log.error("UNKNOWN: {}".format(sys.exc_info()[0]))
+            self.log.exception("UNKNOWN")
         if len(img.shape) == 2:
             img = img.reshape(img.shape[0], img.shape[1], 1)
         packet['data'] = img
@@ -109,12 +109,12 @@ class CoefNpyTxtReader(object):
             else:
                 raise Exception('none of those files exist')
             if data_array is None:
-                self.log.error("Could not read data: {}".format(path))
+                self.log.error("Could not read data: %r", path)
             data_array = data_array.reshape([self.n_channels, -1,
                                              data_array.shape[1]])
             data_array = data_array.transpose([1, 2, 0])  # [y,x,z]
-        except IOError as ioe:
-            self.log.error("IOError: {}".format(str(ioe)))
+        except IOError:
+            self.log.exception("IOError")
 
         packet['data'] = data_array
         return packet
