@@ -16,6 +16,7 @@ class ObjectFactory(object):
     """
     factories = {'Pass': filters.Pass,
                  'TFilter':  filters.TFilter,
+                 'THorizontalFilter': filters.THorizontalFilter,
                  'TCropCoef8ImgFilter': filters.TCropCoef8ImgFilter,
                  'TReader': filters.TFilter,
                  'CoefNpyTxtReader': filters.CoefNpyTxtReader,

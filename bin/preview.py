@@ -6,10 +6,9 @@ Created on Apr 7, 2016
 '''
 
 from __future__ import print_function
-
 import logging
-import yaml
 import argparse
+import yaml
 import cnn_image_processing as ci
 
 LOGGER = logging.getLogger("cnn_image_processing")

@@ -60,6 +60,39 @@ class TFilter(object):
         return self.run(packets)
 
 
+class THorizontalFilter(TFilter):
+
+    '''
+    Tuple horizontal passing filter etends the TFilter
+    '''
+
+    def __init__(self, filters=None):
+        super(THorizontalFilter, self).__init__(filters)
+
+    def run(self, packets):
+        """
+         Runs all the filters with input packets.
+         Args:
+             packets: list or tuple of packets - same length as filters.
+         """
+        assert len(self.filters) == len(packets)
+        flag = True
+        l_result = [None] * len(self.filters)
+        hkwargs = {}
+
+        for i_filter, pfilter in enumerate(self.filters):
+            l_result[i_filter], hkwargs = pfilter(packets[i_filter], **hkwargs)
+            flag &= l_result[i_filter] is not None
+
+        if flag:
+            return tuple(l_result)
+        else:
+            return None
+
+    def __call__(self, packets):
+        return self.run(packets)
+
+
 class TCropCoef8ImgFilter(TFilter):
 
     """
@@ -598,6 +631,7 @@ class JPEG(object):
                            cv2.IMREAD_UNCHANGED)
         if len(img.shape) == 2:
             img = img.reshape(img.shape[0], img.shape[1], 1)
+
         packet['data'] = img
         return packet
 
@@ -634,29 +668,48 @@ class ShiftImg(object):
                 the random state generator seed, default is 5
         '''
         self.mode = mode
-        self.move_vec = np.zeros(3) if move_vec is None else move_vec
+        if move_vec is None:
+            self.move_vec = np.zeros(3)
+        else:
+            self.move_vec = np.asarray(move_vec)
         self.rng = np.random.RandomState(rng_seed)
         assert not (self.mode == 'random' and
                     all(val == 0 for val in self.move_vec))
 
-    def shift(self, packet):
+    def shift(self, packet, **kwargs):
         '''
         Shift data according the move vector with a mirror padding
         '''
         padding = []
-        for move in self.move_vec:
-            if move == 0:
+        move_vec = None
+        abs_move_vec = None
+        move_vec_out = None
+
+        # Use the horizontal args - kwargs if any
+        if 'move_vec' in kwargs:
+            move_vec = kwargs['move_vec']
+            abs_move_vec = np.abs(move_vec)
+            mode = None
+        else:
+            move_vec = self.move_vec
+            abs_move_vec = np.abs(self.move_vec)
+            mode = self.mode
+            move_vec_out = np.copy(self.move_vec)
+            kwargs['move_vec'] = move_vec_out
+
+        for i_val, val in enumerate(abs_move_vec):
+            if val == 0:
                 padding.append((0, 0))
                 continue
 
-            shift = np.abs(move)
-            if self.mode == 'random':
-                shift = self.rng.randint(0, shift)
+            if mode == 'random':
+                val = self.rng.randint(0, val)
+                move_vec_out[i_val] = val * np.sign(move_vec[i_val])
 
-            if move >= 0:
-                padding.append((0, shift))
+            if move_vec[i_val] >= 0:
+                padding.append((0, val))
             else:
-                padding.append((shift, 0))
+                padding.append((val, 0))
 
         pad_data = np.pad(packet['data'], padding, mode='symmetric')
         start_y = padding[0][1]
@@ -664,7 +717,8 @@ class ShiftImg(object):
         shape_y, shape_x, _ = packet['data'].shape
         packet['data'] = pad_data[start_y:start_y + shape_y,
                                   start_x:start_x + shape_x]
-        return packet
 
-    def __call__(self, packet):
-        return self.shift(packet)
+        return packet, kwargs
+
+    def __call__(self, packet, **kwargs):
+        return self.shift(packet, **kwargs)
