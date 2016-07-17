@@ -450,7 +450,7 @@ class Preview(object):
 
         img = packet['data'] / self.norm + self.shift
         cv2.imshow(name, img)
-        cv2.waitKey()
+        cv2.waitKey(1000)
         return packet
 
     def __call__(self, packet):
@@ -682,6 +682,7 @@ class ShiftImg(object):
         '''
         padding = []
         move_vec = None
+        mode = None
         abs_move_vec = None
         move_vec_out = None
 

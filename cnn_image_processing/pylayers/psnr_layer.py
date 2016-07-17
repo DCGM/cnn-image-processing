@@ -7,16 +7,17 @@ Created on May 27, 2016
 from __future__ import print_function
 from __future__ import division
 
-import caffe
 import logging
-import numpy as np
 from matplotlib import pyplot as plt
-from ..utils import RoundBuffer
 # pylint: disable=import-error,no-name-in-module
 from distutils.util import strtobool
+import numpy as np
+import caffe
+from ..utils import RoundBuffer
 
 
 class PyPSNRL(caffe.Layer):
+
     """
     Compute a PSNR of two inputs and PSNR with IPSNR of 3 inputs
     Args:
@@ -44,7 +45,7 @@ class PyPSNRL(caffe.Layer):
         if 'max' in self.dict_param:
             self.max = float(self.dict_param['max'])
         else:
-            self.max = 255
+            self.max = 255.
         if 'history_size' in self.dict_param:
             self.history_size = int(self.dict_param['history_size'])
         else:
@@ -125,12 +126,12 @@ class PyPSNRL(caffe.Layer):
             diff = (bottom[-1].data - bottom[i_input].data).astype(np.float64)
             bottom_psnr = []
             for i_img in xrange(diff.shape[0]):
-                ssd = (diff[i_img]**2).sum()
+                ssd = (diff[i_img] ** 2).sum()
                 mse = ssd / float(diff[i_img].size)
                 if mse == 0:
                     bottom_psnr.append(np.nan)
                 else:
-                    psnr = 10 * np.log10(self.max**2 / mse)
+                    psnr = 10 * np.log10(self.max ** 2 / mse)
                     bottom_psnr.append(psnr)
             results.append(bottom_psnr)
         return results

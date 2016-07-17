@@ -5,18 +5,19 @@ Created on May 27, 2016
 '''
 
 import Queue
+from Queue import Empty
 import multiprocessing
-import caffe
 import logging
+import time
 import numpy as np
 import cv2
-import time
-from Queue import Empty
+import caffe
 
 from .utils import RoundBuffer
 
 
 class Trainer(multiprocessing.Process):
+
     """
     Trainer call the caffe solver - train and prepare the input
     cnn input batches.
@@ -57,14 +58,14 @@ class Trainer(multiprocessing.Process):
         self.test_interval = test_interval
         self.caffe_weights = caffe_weights
         self.caffe_solverstate = caffe_solverstate
-        self.caffe_mode = "GPU" if caffe_mode == None else caffe_mode
+        self.caffe_mode = "GPU" if caffe_mode is None else caffe_mode
         self.stat_interval = stat_interval
         self.gpu_id = gpu_id
         self.buffer = Queue.Queue(buffer_size)
 
         self.stat = None
         self.log = logging.getLogger(__name__ + ".Trainer")
-        self.queue_timeout = 25  # timeout wait queue 25 seconds
+        self.queue_timeout = 250  # timeout wait queue 25 seconds
 
     def center_initialization(self, net, step=1):
         """
@@ -74,6 +75,7 @@ class Trainer(multiprocessing.Process):
             if len(net.params[layer][0].data.shape) == 4:
                 params = net.params[layer][0]
                 average = np.average(params.data, (1, 2, 3))
+                # pylint: disable=E1101
                 average = average.reshape((-1, 1, 1, 1))
                 params.data[...] = params.data - (average * step)
 
@@ -88,16 +90,15 @@ class Trainer(multiprocessing.Process):
             caffe.set_mode_gpu()
         else:
             caffe.set_mode_cpu()
-        self.log.info(" SOLVER FILE: {}".format(solver_file))
+        self.log.info(" Solver file: %s", solver_file)
         solver = caffe.get_solver(solver_file)
 
         if self.caffe_solverstate is not None:
             solver.restore(self.caffe_solverstate)
-            self.log.info(" Loaded solverstate: {}"
-                          .format(self.caffe_solverstate))
+            self.log.info(" Loaded solverstate: %s", self.caffe_solverstate)
         elif self.caffe_weights is not None:
             solver.net.copy_from(self.caffe_weights)
-            self.log.info(" Loaded weights: {}".format(self.caffe_weights))
+            self.log.info(" Loaded weights: %s", self.caffe_weights)
         else:
             self.center_initialization(solver.net)
 
@@ -145,7 +146,7 @@ class Trainer(multiprocessing.Process):
                 break
 
         stop_fetch = time.clock()
-        self.log.debug(" Fetch data time: {}".format(stop_fetch - start_fetch))
+        self.log.debug(" Fetch data time: %f", stop_fetch - start_fetch)
 
         return True if i_batch == self.batch_size else False
 
@@ -172,7 +173,7 @@ class Trainer(multiprocessing.Process):
         solver.step(1)
         stop_train = time.clock()
 
-        self.log.debug(" Train time: {}".format(stop_train - start_train))
+        self.log.debug(" Train time: %f", stop_train - start_train)
         return fetch_flag
 
     def run(self):
@@ -208,8 +209,8 @@ class Trainer(multiprocessing.Process):
             start_iteration_tr = time.clock()
             train_flag = self.train(solver)
             stop_iteration_tr = time.clock()
-            self.log.debug(" Train Iteration time: {}"
-                           .format(stop_iteration_tr - start_iteration_tr))
+            self.log.debug("Train Iteration time: %f",
+                           stop_iteration_tr - start_iteration_tr)
 
             # Testing
             if(self.test_in_queue is not None and
@@ -227,7 +228,7 @@ class Trainer(multiprocessing.Process):
                 self.stat.add_history(solver.net)
                 self.stat.print_stats()
 
-            self.log.debug(" Iteration: {}".format(solver.iter))
+            self.log.debug(" Iteration: %i", solver.iter)
 
             if solver.iter == self.max_iter:
                 break
@@ -256,8 +257,8 @@ class Trainer(multiprocessing.Process):
             # Data have to be copied otherwise are modified by this thread
             self.buffer.put({'data_batch': np.array(nd_data, copy=True),
                              'label_batch': np.array(nd_label, copy=True)})
-            self.log.debug("Thread fetch time of batch: {}".
-                           format(fetch_stop - fetch_start))
+            self.log.debug("Thread fetch time of batch: %f",
+                           fetch_stop - fetch_start)
             i_batch = 0
             fetch_start = time.clock()
 
@@ -300,6 +301,7 @@ class Trainer(multiprocessing.Process):
 
 
 class ActivationStat(object):
+
     """
     Compute the activation stats
     """
@@ -343,7 +345,6 @@ class ActivationStat(object):
             msg_list = ["{0:3}".format(int(val * 100 + 0.5)) for val in hist]
             msg_list.insert(0, key + ":")
             format_msg.append(msg_list)
-        # pylint: disable=bad-builtin
         widths = [max(map(len, col)) for col in zip(*format_msg)]
         for row in format_msg:
             msg = "  ".join((val.ljust(width) for val, width in
