@@ -163,11 +163,11 @@ class PyPSNRLossL(caffe.Layer):
 
     PSNR = 10 * log10(MAX^2/MSE);
     MAX = 1
-    MSE = 1/(m*n) * Sum(Sum( (x_{m,n} - l_{m,n})^2 ))
+    MSE = 1/(M*N) * Sum(Sum( (x_{m,n} - l_{m,n})^2 ))
 
     Differentiation according every data pixel x_{m,n}:
 
-    d -1*10 * log_10(MAX/MSE) / dx_{m,n} = 20*( (x_{m,n}-l{m,n}) * log(10) )^-1
+    d -1*10 * log_10(MAX/MSE) / dx_{m,n} = 20*(x-l)/(MSE * MSE.size)
     i.e. d/dx =  20/log(10) * 1/diff
 
     '''
@@ -180,6 +180,7 @@ class PyPSNRLossL(caffe.Layer):
         self.log = logging.getLogger(__name__ + type(self).__name__)
         self.log_const = -20 / np.log(10)
         self.max = 1
+        self.eps = (self.max / 128) ** 2
 
     PSNR_tuple = namedtuple('PSNR_tuple', ['psnr', 'ssd', 'mse', 'diff'])
     '''
@@ -215,9 +216,11 @@ class PyPSNRLossL(caffe.Layer):
                                    bottom[1].data[i_batch])
             psnr_list.append(psnr_tuple.psnr)
 
-            self.diff[i_batch, ...] = -1 * self.log_const * psnr_tuple.diff
+            mse_eps = (psnr_tuple.mse + self.eps)
+            diff = -1 * self.log_const / (mse_eps * psnr_tuple.diff.size)
+            self.diff[i_batch, ...] = diff * psnr_tuple.diff
 
-        top[0].data[...] = -1 * sum(psnr_list) / len(psnr_list)
+        top[0].data[...] = -1 * np.average(psnr_list)
 
     def backward(self, top, propagate_down, bottom):
         '''
