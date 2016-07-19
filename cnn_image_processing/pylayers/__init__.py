@@ -4,7 +4,7 @@ Python caffe layers
 
 from .crop_layer import PyCropL
 from .psnr_layer import PyPSNRL
-from .loss_layer import PyEuclideanLossL
+from .loss_layer import PyEuclideanLossL, PyPSNRLossL
 from .vis_layer import PyVisL
 from .add_layer import PyAddL
 from .sub_layer import PySubL
