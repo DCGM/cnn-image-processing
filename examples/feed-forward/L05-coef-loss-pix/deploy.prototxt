@@ -77,19 +77,19 @@ layer { name: 'conv-5' type: 'Convolution'
         }
 }
 
-layer { name: 'Crop-label' type: 'Crop' 
+layer { name: 'Crop-label' type: 'Crop'
         top: 'crop-label' bottom: 'label' bottom: 'conv-5'
         crop_param{ offset: 1 axis: 2}
         propagate_down: false  propagate_down: false
 }
 
-layer { name: 'Crop-coef' type: 'Crop' 
+layer { name: 'Crop-coef' type: 'Crop'
         top: 'crop-coef' bottom: 'coef' bottom: 'conv-5'
         crop_param{ offset: 1 axis: 2}
         propagate_down: false  propagate_down: false
 }
 
-layer { name: 'Sum' type: 'Eltwise' 
+layer { name: 'Sum' type: 'Eltwise'
         top: 'sum-conv-5' bottom: 'conv-5' bottom: 'crop-coef'
         eltwise_param { operation: SUM }
 }
@@ -106,7 +106,7 @@ layer { name: 'LOSS-pix' type: 'Python'
         top:    'loss'
         bottom: 'idct-sum-conv-5'  bottom: 'idct-label'
         python_param { module: 'cnn_image_processing.pylayers' layer: 'PyEuclideanLossL'
-                       param_str: "pixel_norm: true, print: False, print_iter: 1"
+                       param_str: "norm: batch_size"
         }
         loss_weight: 1
         propagate_down: true propagate_down: false
@@ -120,7 +120,7 @@ layer { name: 'Scale-CNN' type: 'Power'
 layer { name: 'Scale-Label' type: 'Power'
         bottom: 'idct-label' top: 'scale-idct-label'
         power_param { power: 1 scale: 1024 shift: 128 }
-        propagate_down: false 
+        propagate_down: false
 }
 
 layer { name: 'Scale-coef' type: 'Power'
@@ -166,7 +166,7 @@ layer { name: 'PSNR-Test' type: 'Python'
 #                        param_str: 'scale: 4, norm: 255, mean: 0 ,name: cnn'}
 #}
 #
-#layer { name: 'Visualization-coef' type: 'Python' 
+#layer { name: 'Visualization-coef' type: 'Python'
 #        bottom: 'idct-coef'
 #        python_param: { module: 'cnn_image_processing.pylayers' layer: 'PyVisL'
 #                        param_str: 'scale: 4, norm: 255, mean: 0, name: jpeg'}}
