@@ -9,12 +9,8 @@ from __future__ import division
 
 from collections import namedtuple
 import logging
-# pylint: disable=import-error,no-name-in-module
-from distutils.util import strtobool
 import caffe
 import numpy as np
-
-from ..utils import RoundBuffer
 
 
 class PyEuclideanLossL(caffe.Layer):
@@ -27,15 +23,9 @@ class PyEuclideanLossL(caffe.Layer):
     Loss is defined as: (bottom[0] - bottom[end]) / [batch_size | n_pixels] / 2
     Parameters:
     -----------
-      pixel_norm: boolean
-        True computes loss normalized by number of pixels,
-        False loss normalized by batch size
-
-      print: boolean
-        print the PSNR & iPSNR (if 3 inpouts available)
-
-      print_iter: int
-        print PSNR (and iPSNR) every ith iteration
+      norm: string
+        'batch_num', default normalize by number of samples in minibatch (w)
+        'batch_size', normalize by size of minibatch (w * z * y * x)
 
     Layer prototxt definition:
     --------------------------
@@ -50,8 +40,7 @@ class PyEuclideanLossL(caffe.Layer):
         module: 'cnn_image_processing.pylayers'
         # the layer name - the class name in the module
         layer: 'PyEuclideanLossL'
-        param_str: "pixel_norm: True, psnr_max: 255, print: True,
-        print_iter: 50}"
+        param_str: "norm: batch_num}"
       }
       # set loss weight so Caffe knows this is a loss layer.
       # since PythonLayer inherits directly from Layer,
@@ -74,34 +63,20 @@ class PyEuclideanLossL(caffe.Layer):
         self.dict_param = dict((key.strip(), val.strip()) for key, val in (
             item.split(':') for item in self.param_str.split(',')))
 
-        if 'pixel_norm' in self.dict_param:
-            self.pixel_norm = strtobool(self.dict_param['pixel_norm'])
+        if 'norm' in self.dict_param:
+            self.norm = self.dict_param['norm']
+            assert self.norm == 'batch_num' or self.norm == 'batch_size'
         else:
-            self.pixel_norm = False
-
-        if 'print' in self.dict_param:
-            self.b_print = strtobool(self.dict_param['print'])
-        else:
-            self.b_print = False
-
-        if 'print_iter' in self.dict_param:
-            self.print_iter = int(self.dict_param['print_iter'])
-        else:
-            self.print_iter = 1
+            self.norm = 'batch_num'
 
         self.log.info(self.param_str)
-
-        self.iteration = np.uint(0)
-        self.step = 5
-        self.history_size = 200
-        self.psnr_buffers = [RoundBuffer(max_size=self.history_size)
-                             for _ in xrange(len(bottom) - 1)]
 
         # Compute the borders
         shape_cnn_y, shape__cnn_x = bottom[0].data.shape[2:]
         shape_y, shape_x = bottom[1].data.shape[2:]
         self.borders = (np.asarray((shape_y - shape_cnn_y,
-                                   shape_x - shape__cnn_x)) // 2).astype(np.int)
+                                    shape_x - shape__cnn_x))
+                        // 2).astype(np.int)
         self.log.info("Bottom[0]  %s,  Bottom[1] %s border: %s",
                       bottom[0].data.shape, bottom[1].data.shape, self.borders)
 
@@ -133,14 +108,11 @@ class PyEuclideanLossL(caffe.Layer):
             bottom[0].data - cropped_blob).astype(np.float64)
 
         # Euclidian loss
-        if self.pixel_norm:
+        if self.norm == 'batch_size':
             top[0].data[...] = np.sum(
                 self.diff ** 2) / bottom[0].data.size / 2.
-        else:
+        elif self.norm == 'batch_num':
             top[0].data[...] = np.sum(self.diff ** 2) / bottom[0].num / 2.
-
-        if self.b_print and self.iteration % self.print_iter == 0:
-            self.log.info(" Forward Loss: %f", np.squeeze(top[0].data))
 
     def backward(self, top, propagate_down, bottom):
         """
@@ -153,9 +125,9 @@ class PyEuclideanLossL(caffe.Layer):
                 sign = 1  # label at bottom[1]: data - label
             else:
                 sign = -1  # label at bottom[0]: label - data
-            if self.pixel_norm:
+            if self.norm == 'batch_size':
                 bottom[i].diff[...] = sign * self.diff / bottom[i].data.size
-            else:
+            elif self.norm == 'batch_num':
                 bottom[i].diff[...] = sign * self.diff / bottom[i].num
 
     def crop_all(self, bottom):
@@ -204,19 +176,20 @@ class PyPSNRLossL(caffe.Layer):
         '''
         Constructor initilize the layer
         '''
-
         super(PyPSNRLossL, self).__init__(arg)
         self.log = logging.getLogger(__name__ + type(self).__name__)
         self.log_const = -20 / np.log(10)
         self.max = 1
 
     PSNR_tuple = namedtuple('PSNR_tuple', ['psnr', 'ssd', 'mse', 'diff'])
+    '''
+    Return type of psnr method
+    '''
 
     def setup(self, bottom, top):
         '''
         Caffe base setup
         '''
-
         if len(bottom) != 2:
             raise Exception("Need two inputs to compute distance.")
 
