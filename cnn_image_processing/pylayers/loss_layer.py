@@ -234,7 +234,6 @@ class PyPSNRLossL(caffe.Layer):
         """
         Compute PSNR
         """
-        self.
         diff = (data - label).astype(dtype=np.float64)
         ssd = (diff ** 2).sum()
         mse = ssd / float(diff.size)

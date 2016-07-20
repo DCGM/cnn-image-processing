@@ -30,6 +30,14 @@ class PyPSNRL(caffe.Layer):
         print_step: uint
             Ith iteration to print the PSNR
             Default is 50
+        average: str
+            'mse' (default) computes the psnr of average per minibatch
+            'psnr': compute the average of psnr per patches
+        graph: boolean
+            True: plot the graph
+            False (default) do not plot
+        graph_name: str
+            name of the plotted graph
     """
 
     def setup(self, bottom, top):
@@ -54,14 +62,21 @@ class PyPSNRL(caffe.Layer):
             self.print_step = int(self.dict_param['print_step'])
         else:
             self.print_step = 50
-        if 'plot_graph' in self.dict_param:
-            self.plot_graph = strtobool(self.dict_param['plot_graph'])
+        if 'graph' in self.dict_param:
+            self.plot_graph = strtobool(self.dict_param['graph'])
         else:
             self.plot_graph = False
         if 'graph_name' in self.dict_param:
             self.graph_name = self.dict_param['graph_name']
         else:
             self.graph_name = 'iPSNR.png'
+
+        if 'average' in self.dict_param:
+            assert ('mse' == self.dict_param['average'] or
+                    'psnr' == self.dict_param['average'])
+            self.average = self.dict_param['average']
+        else:
+            self.average = 'mse'
 
         self.iterations = 0
         self.psnr_buffers = [RoundBuffer(max_size=self.history_size)
@@ -85,18 +100,25 @@ class PyPSNRL(caffe.Layer):
         """
         Feed forward
         """
-        l_psnr = self.psnr(bottom)
-        for i_val, val in enumerate(l_psnr):
-            for psnr_val in val:
+        psnr_list = None
+
+        if self.average == 'psnr':
+            psnr_list = self.psnr_patches(bottom)
+            for i_val, val in enumerate(psnr_list):
+                for psnr_val in val:
+                    self.psnr_buffers[i_val].append_round(psnr_val)
+        else:
+            psnr_list = self.psnr_minibatch(bottom)
+            for i_val, psnr_val in enumerate(psnr_list):
                 self.psnr_buffers[i_val].append_round(psnr_val)
 
         if self.iterations % self.print_step == 0:
             avg_psnr = [sum(val) / val.size for val in self.psnr_buffers]
             msg = " ".join(' PSNR bottom[{}]: {}'
                            .format(*val) for val in enumerate(avg_psnr))
-            if len(l_psnr) < 2:
+            if len(psnr_list) < 2:
                 self.log.info(msg)
-            elif len(l_psnr) == 2:
+            elif len(psnr_list) == 2:
                 ipsnr = avg_psnr[0] - avg_psnr[1]
                 ipsnr_msg = " iPSNR: {} ".format(ipsnr)
                 self.log.info(" ".join([ipsnr_msg, msg]))
@@ -117,9 +139,9 @@ class PyPSNRL(caffe.Layer):
         for i_diff in xrange(len(top)):
             bottom[i_diff].diff[...] = top[i_diff].diff
 
-    def psnr(self, bottom):
+    def psnr_patches(self, bottom):
         """
-        Compute the PSNR of bottoms
+        Compute the average PSNR of bottom per axis 1 (bottom[0,0-end])
         """
         results = []
         for i_input in xrange(len(bottom) - 1):
@@ -135,6 +157,22 @@ class PyPSNRL(caffe.Layer):
                     bottom_psnr.append(psnr)
             results.append(bottom_psnr)
         return results
+
+    def psnr_minibatch(self, bottom):
+        '''
+        Compute PSNR of the whole minibatch
+        '''
+        list_bottom_psnr = []
+        for i_input in xrange(len(bottom) - 1):
+            diff = (bottom[-1].data - bottom[i_input].data).astype(np.float64)
+            ssd = (diff ** 2).sum()
+            mse = ssd / float(diff.size)
+            if mse == 0:
+                list_bottom_psnr.append(np.nan)
+            else:
+                psnr = 10 * np.log10(self.max ** 2 / mse)
+                list_bottom_psnr.append(psnr)
+        return list_bottom_psnr
 
     def plot(self):
         """
