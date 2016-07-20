@@ -181,6 +181,7 @@ class PyPSNRLossL(caffe.Layer):
         self.log_const = -20 / np.log(10)
         self.max = 1
         self.eps = (self.max / 128) ** 2
+        self.diff = None
 
     PSNR_tuple = namedtuple('PSNR_tuple', ['psnr', 'ssd', 'mse', 'diff'])
     '''
@@ -193,6 +194,7 @@ class PyPSNRLossL(caffe.Layer):
         '''
         if len(bottom) != 2:
             raise Exception("Need two inputs to compute distance.")
+        self.diff = np.zeros_like(bottom[0].data, dtype=np.float32)
 
     def reshape(self, bottom, top):
         '''
@@ -232,6 +234,7 @@ class PyPSNRLossL(caffe.Layer):
         """
         Compute PSNR
         """
+        self.
         diff = (data - label).astype(dtype=np.float64)
         ssd = (diff ** 2).sum()
         mse = ssd / float(diff.size)
