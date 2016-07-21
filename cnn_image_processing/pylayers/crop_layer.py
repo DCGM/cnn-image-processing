@@ -12,7 +12,8 @@ import caffe
 
 
 class PyCropL(caffe.Layer):
-    """
+
+    """"
     Crop the center of bottom[0].data according the bottom[1].data
     """
 
@@ -47,7 +48,8 @@ class PyCropL(caffe.Layer):
         len_x = bottom[self.i_label].data.shape[2]
         len_y = bottom[self.i_label].data.shape[3]
         data = bottom[self.i_data].data
-        crop_data = data[:, :, i_crop_x:i_crop_x + len_x,
+        crop_data = data[:, :,
+                         i_crop_x:i_crop_x + len_x,
                          i_crop_y:i_crop_y + len_y]
         top[0].data[...] = crop_data
 

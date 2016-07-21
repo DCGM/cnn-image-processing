@@ -16,15 +16,17 @@ from cnn_image_processing.filters.writers import ImageWriter
 
 
 class FCN(multiprocessing.Process):
+
     """
     FCN feed forward the packet data through the FCN - fully convolutional
     network (CNN - convolutional network without fully (dense) connected
-    layers). Compose the FCN packet data result an write it to png file.
+    layers). Compose the FCN packet data result and write it to png file.
     """
 
     def __init__(self, in_queue=None, deploy=None, caffe_weights=None,
                  in_blob=None, patch_size=None, batch_size=1, out_blob=None,
-                 borders=None, path=None, caffe_mode=None, gpu_id=0):
+                 borders=None, path=None, name_suffix=None, caffe_mode=None,
+                 gpu_id=0):
         super(FCN, self).__init__()
         self.daemon = True  # Kill yourself if parent dies
         self.in_queue = in_queue
@@ -36,6 +38,7 @@ class FCN(multiprocessing.Process):
         self.out_blob = out_blob
         self.borders = np.asarray(borders) if borders != None else None
         self.writer = ImageWriter(d_path=path)
+        self.name_suf = name_suffix if name_suffix is not None else "_fcn.png"
         self.caffe_mode = "GPU" if caffe_mode == None else caffe_mode
         self.gpu_id = gpu_id
         self.log = logging.getLogger(__name__ + ".FCN")
@@ -54,10 +57,10 @@ class FCN(multiprocessing.Process):
         else:
             caffe.set_mode_cpu()
 
-        self.log.info(" deploy: {}".format(self.deploy))
-        self.log.info(" weights: {}".format(self.caffe_weights))
-        self.log.info(" input size: {}".format(self.patch_size))
-        self.log.info(" batch size: {}".format(self.batch_size))
+        self.log.info("deploy: %s", self.deploy)
+        self.log.info("weights: %s", self.caffe_weights)
+        self.log.info("input size: %i", self.patch_size)
+        self.log.info("batch size: %i", self.batch_size)
 
         fcn = caffe.Net(self.deploy, self.caffe_weights, caffe.TEST)
 
@@ -172,9 +175,9 @@ class FCN(multiprocessing.Process):
                 break
 
         stop_fetch = time.clock()
-        self.log.debug(" Fetch data time: {}".format(stop_fetch - start_fetch))
-        self.log.debug(" Fetch packets: {}".format(i_patch))
-        self.log.debug(" Packets split into: {} parts".format(i_batch))
+        self.log.debug("Fetch data time: %i", stop_fetch - start_fetch)
+        self.log.debug("Fetch packets: %i", i_patch)
+        self.log.debug("Packets split into: %i parts", i_batch)
 
         return i_batch >= self.batch_size
 
@@ -182,7 +185,6 @@ class FCN(multiprocessing.Process):
         """
         Feed the CNN minibatch
         """
-
         res = False
         for label in parts_meta.keys():
             if len(parts_meta[label]) >= batch_size:
@@ -199,7 +201,6 @@ class FCN(multiprocessing.Process):
         """
         Collect the CNN output data
         """
-
         fcn_out_data = fcn.blobs[self.out_blob].data
 
         done_packets = []
@@ -262,7 +263,7 @@ class FCN(multiprocessing.Process):
             img_name = os.path.basename(packet['path'])
             write_image_name = "{}_fcn.png".format(img_name)
             self.writer(write_image_name, img)
-            self.log.info("Written: {}".format(write_image_name))
+            self.log.info("Written: %s", write_image_name)
 
     def run(self):
         """
@@ -303,7 +304,7 @@ class FCN(multiprocessing.Process):
                 d_read_t = stop_gather - stop_feed
                 d_compose_t = stop_compose - stop_feed
                 d_write_t = stop_write - stop_feed
-                self.log.debug(" Feed fnc time: {}ms".format(d_feed_t))
-                self.log.debug(" FCN data read time: {}ms".format(d_read_t))
-                self.log.debug(" Image compose time: {}ms".format(d_compose_t))
-                self.log.debug(" Image write time: {}ms".format(d_write_t))
+                self.log.debug("Feed fnc time: % ims", d_feed_t)
+                self.log.debug("FCN data read time: % ims", d_read_t)
+                self.log.debug("Image compose time: % ims", d_compose_t)
+                self.log.debug("Image write time: % ims", d_write_t)

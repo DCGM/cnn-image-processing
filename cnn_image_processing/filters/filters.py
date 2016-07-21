@@ -6,15 +6,101 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+from itertools import cycle
 import cv2
 import numpy as np
 
 from .. utils import decode_dct
 from .. utils import code_dct
 
-# __all__ = ["TFilter", "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul",
+# __all__ = ["Packet", "TFilter", "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul",
 #            "Div", "Add", "Sub", "JPGBlockReshape", "MullQuantTable", "Pass",
 #            "Preview", "DecodeDCT", "CodeDCT", "Pad8", "PadCoefMirror"]
+
+
+class Packet(object):
+
+    '''
+    Packet is the class (more like struct from c++) to hold several attributes
+    For the design pattern behind this approach, see
+    http://python-3-patterns-idioms-test.readthedocs.io/en/latest/Messenger.html
+
+    Also have a look at http://stackoverflow.com/a/610923 about: "easier to
+    ask for forgiveness than permission" (EAFP) rather than "look before you
+    leap" (LBYL) when dealing with the Packe attributres.
+    '''
+
+    def __init__(self, **kwargs):
+        '''
+        Packet intialize - set the attributes
+        '''
+        self.__dict__ = kwargs
+
+
+class FileListReader(object):
+
+    '''
+    Reads the file once or in loop. Line is plit according blank chars into
+    segments. All segments are sent in a vector of corresponing packets
+    of type Packet.
+    '''
+
+    def __init__(self, file_list=None, loop=False):
+        '''
+        Inititlize the FileListReader
+
+        Read the file into the list (default) in case of loop is False,
+        otherwise the loop is True the file is buffered into the cycle buffer
+        to repeatedly read data from.
+
+        args:
+            file_list: str
+                list with the data (usualy paths to data)
+            loop: Boolean
+                loop reads once in case loop is False (default), loop otherwise
+        '''
+        self.file_list = file_list
+        self.loop = loop
+        self.buf = None
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
+
+        try:
+            with open(self.file_list, 'r') as flist:
+                if self.loop is True:
+                    self.buf = cycle(flist)
+                    for _ in flist:
+                        self.buf.next()
+                else:
+                    self.buf = []
+                    for line in flist:
+                        self.buf.append(line)
+
+        except EnvironmentError as enver:
+            self.log.exception("Failed to read: %s", self.file_list)
+            raise enver
+
+    def read(self):
+        '''
+        Read and parse next line in the buffered file and return packets
+
+        Packets is a vector of packets (per segment in one line)
+        '''
+
+        packets = None
+        try:
+            line = next(self.buf)
+            packets = [Packet(path=segment) for segment in line.split()]
+            return packets
+        except StopIteration:
+            self.log.exception("Read end. %s", self.file_list)
+            return None
+
+    def __call__(self, **kwargs):
+        '''
+        Note: **kwargs are here only to be aligned with call conv of other
+        filters.
+        '''
+        return self.read()
 
 
 class TFilter(object):
