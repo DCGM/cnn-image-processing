@@ -17,32 +17,46 @@ class ImageReader(object):
     Always returns the float 3dim numpy array.
     """
 
-    def __init__(self, grayscale=bool):
+    def __init__(self, grayscale=False):
+        '''
+        Initialize the image reader
+
+        args:
+            grayscale: Boolean
+                True: read the image as is
+                False (default): Read grayscale image with pne channel [Y,X,1]
+        '''
+        self.grayscale = grayscale
         self.load_flag = cv2.IMREAD_GRAYSCALE if grayscale\
             else cv2.IMREAD_UNCHANGED
-        self.log = logging.getLogger(__name__ + ".ImageReader")
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def read(self, packet):
+    def read(self, targs):
         """
         Loads and returns the image of path.
         """
         img = None
         try:
-            path = packet['path']
+            packet = targs.packet
+            path = packet.path
+            packet.data = None
             img = cv2.imread(path, self.load_flag).astype(np.float32)
-            if img is None:
-                self.log.error("Could not read image: %r", path)
-                return None
+
+            if self.grayscale is True:
+                img = img.reshape(img.shape[0], img.shape[1], 1)
+
+            packet.data = img
+            return targs
+
         except cv2.error:
             self.log.exception("cv2.error")
-        except IOError as ioe:
-            print "I/O error({0}): {1}".format(ioe.errno, ioe.strerror)
-        except:
-            self.log.exception("UNKNOWN")
-        if len(img.shape) == 2:
-            img = img.reshape(img.shape[0], img.shape[1], 1)
-        packet['data'] = img
-        return packet
+            return targs
+        except IOError:
+            self.log.exception("Error reading %s", packet.path)
+            return targs
+        except AttributeError:
+            self.log.exception("No path defined")
+            return targs
 
     def __call__(self, path):
         """
@@ -52,6 +66,7 @@ class ImageReader(object):
 
 
 class ImageX8Reader(ImageReader):
+
     """
     Reads several types of images via OpenCV.
     Crop the images to have the size divideable by 8.
@@ -60,28 +75,32 @@ class ImageX8Reader(ImageReader):
 
     def __init__(self, grayscale=bool):
         super(ImageX8Reader, self).__init__(grayscale)
-        self.log = logging.getLogger(__name__ + ".ImageX8Reader")
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def read(self, packet):
+    def read(self, targs):
         """
         Loads and returns the cropped image size divideable by 8.
         """
-        packet = super(ImageX8Reader, self).read(packet)
-        if packet != None:
-            packet['data'] = self.crop(packet['data'])
-            return packet
-        else:
-            return None
+        try:
+            targs = super(ImageX8Reader, self).read(targs)
+            packet = targs.packet
+            packet.data = self.crop(packet.data)
+            return targs
+
+        except TypeError:
+            self.log.exception("Failed")
+            return targs
 
     def crop(self, img):
         """
         Crop the img to be 8x divisible.
         """
         crop_shape = [i - (i % 8) for i in img.shape[0:2]]
-        return img[0:crop_shape[0], 0:crop_shape[1], ...]
+        return img[0:crop_shape[0], 0:crop_shape[1]]
 
 
 class CoefNpyTxtReader(object):
+
     """
     Reads the jpeg-coefs in numpy array txt file format.
     Always returns float Xdim numpy array.

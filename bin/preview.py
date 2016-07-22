@@ -50,11 +50,8 @@ def main():
         config = yaml.safe_load(cf_file)
         print (yaml.dump(config))
 
-    creator = ci.Creator()
-
-    train_provider = creator.create_provider(config['Provider'])
-    train_provider.file_list = file_list
-    train_provider.run()
+    provider = ci.Creator.process(config['Process'], file_list)
+    provider.run()
 
 if __name__ == "__main__":
     main()

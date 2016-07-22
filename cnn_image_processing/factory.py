@@ -15,6 +15,7 @@ class ObjectFactory(object):
     Factory class to create several object.
     """
     factories = {'Pass': filters.Pass,
+                 'FileListReader': filters.FileListReader,
                  'TFilter':  filters.TFilter,
                  'THorizontalFilter': filters.THorizontalFilter,
                  'TCropCoef8ImgFilter': filters.TCropCoef8ImgFilter,

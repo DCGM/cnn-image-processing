@@ -7,13 +7,14 @@ Created on May 27, 2016
 from __future__ import print_function
 
 from .factory import ObjectFactory
-from .provider import Provider
+from .provider import Process, Provider
 from .sampler import Sampler
 from .trainer import Trainer
 from .fcn import FCN
 
 
 class Creator(object):
+
     """
     Create the readers and filters according the configuration file.
     """
@@ -58,6 +59,29 @@ class Creator(object):
         return tup_filters
 
     @classmethod
+    def filters(cls, tfilters):
+        '''
+        Create and initialize filters
+        '''
+        ctfilters = []
+        for tfilter in tfilters:
+            cfilters = []
+            for ftr in tfilter:
+                fid = ftr.keys()[0]
+                cfilters.append(cls.f_create(fid, **ftr[fid]))
+            ctfilters.append(cfilters)
+
+        return ctfilters
+
+    @classmethod
+    def process(cls, conf_process, file_list):
+        '''
+        Create a Process
+        '''
+        tfilters = cls.filters(conf_process)
+        return Process(tfilters=tfilters, file_list=file_list)
+
+    @classmethod
     def create_provider(cls, config):
         """
         Creates provider.
@@ -88,4 +112,3 @@ class Creator(object):
         Creates the trainer.
         """
         return FCN(**config)
-

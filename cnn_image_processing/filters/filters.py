@@ -6,6 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+from collections import namedtuple
 from itertools import cycle
 import cv2
 import numpy as np
@@ -36,6 +37,8 @@ class Packet(object):
         '''
         self.__dict__ = kwargs
 
+FilterTArg = namedtuple('FilterTArg', ['packet', 'arg'])
+
 
 class FileListReader(object):
 
@@ -45,7 +48,7 @@ class FileListReader(object):
     of type Packet.
     '''
 
-    def __init__(self, file_list=None, loop=False):
+    def __init__(self, data=None, loop=False):
         '''
         Inititlize the FileListReader
 
@@ -54,29 +57,37 @@ class FileListReader(object):
         to repeatedly read data from.
 
         args:
-            file_list: str
+            data: str
                 list with the data (usualy paths to data)
             loop: Boolean
                 loop reads once in case loop is False (default), loop otherwise
         '''
-        self.file_list = file_list
+        self.data = data
         self.loop = loop
         self.buf = None
+        self.iter = None
         self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
+    def init_data(self, data=None):
+        '''
+        Initilize the data reader
+        '''
+        if data is not None:
+            self.data = data
+
         try:
-            with open(self.file_list, 'r') as flist:
-                if self.loop is True:
-                    self.buf = cycle(flist)
-                    for _ in flist:
-                        self.buf.next()
-                else:
-                    self.buf = []
-                    for line in flist:
-                        self.buf.append(line)
+            with open(self.data, 'r') as flist:
+                self.buf = []
+                for line in flist:
+                    self.buf.append(line)
+
+            if self.loop is True:
+                self.iter = cycle(self.buf)
+            else:
+                self.iter = iter(self.buf)
 
         except EnvironmentError as enver:
-            self.log.exception("Failed to read: %s", self.file_list)
+            self.log.exception("Failed to read: %s", self.data)
             raise enver
 
     def read(self):
@@ -86,21 +97,71 @@ class FileListReader(object):
         Packets is a vector of packets (per segment in one line)
         '''
 
-        packets = None
+        ltargs = None
         try:
-            line = next(self.buf)
-            packets = [Packet(path=segment) for segment in line.split()]
-            return packets
-        except StopIteration:
-            self.log.exception("Read end. %s", self.file_list)
-            return None
+            line = next(self.iter)
+            ltargs = [FilterTArg(Packet(path=segment), None)
+                      for segment in line.split()]
 
-    def __call__(self, **kwargs):
+            return ltargs
+
+        except StopIteration:
+            self.log.debug("Read end. %s", self.data)
+            raise
+
+    def __call__(self, args):
         '''
-        Note: **kwargs are here only to be aligned with call conv of other
+        Note: args are here only to be aligned with call conv of other
         filters.
         '''
         return self.read()
+
+
+class Preview(object):
+
+    """
+    Sow the data as image via OpenCV
+    """
+
+    def __init__(self, norm=1, shift=0, name=None):
+        '''
+        Initilize the Preview
+
+        args:
+         norm: float
+            Value to divide the data per element with
+        shift: float
+            Value to shif the data with
+        name: str
+            Name of the preview window
+            In case it is not defined the looks for packet.label or packet.path
+        '''
+        self.norm = norm
+        self.shift = shift
+        self.name = name
+
+    def preview(self, targs):
+        """
+        Preview the packet's data as an image
+        """
+
+        packet = targs.packet
+        name = None
+        if self.name is not None:
+            name = self.name
+        elif hasattr(packet, 'label'):
+            name = packet.label
+        else:
+            name = packet.path
+
+        img = packet.data / self.norm + self.shift
+        cv2.imshow(name, img)
+        cv2.waitKey(10)
+
+        return targs
+
+    def __call__(self, packet):
+        return self.preview(packet)
 
 
 class TFilter(object):
@@ -508,39 +569,6 @@ class Pass(object):
 
     def __call__(self, packet):
         return packet
-
-
-class Preview(object):
-
-    """
-    Try to preview the packet's data as the image via OpenCV
-    """
-
-    def __init__(self, norm=1, shift=0, name=None):
-        self.norm = norm
-        self.shift = shift
-        self.name = name
-
-    def preview(self, packet):
-        """
-        Preview the packet's data as an image
-        """
-        name = None
-        if self.name is None:
-            if 'label' in packet:
-                name = packet['label']
-            else:
-                name = packet['path']
-        else:
-            name = self.name
-
-        img = packet['data'] / self.norm + self.shift
-        cv2.imshow(name, img)
-        cv2.waitKey(1000)
-        return packet
-
-    def __call__(self, packet):
-        return self.preview(packet)
 
 
 class DecodeDCT(object):

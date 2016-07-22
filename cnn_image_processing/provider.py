@@ -6,11 +6,65 @@ Created on May 27, 2016
 
 from __future__ import print_function
 
-import multiprocessing
 import logging
+import multiprocessing
+from .filters import FilterTArg
+
+
+class Process(multiprocessing.Process):
+
+    """
+    Exec all the Filters
+    """
+
+    def __init__(self, file_list=None, out_queue=None, tfilters=None):
+        """
+        Provider constructor
+        Args:
+            queue_size: The between process queue max n_filters.
+            reader: Reader parsing the elements per line.
+            loop: Boolean True read the file in loop, False read the file once.
+        """
+        super(Process, self).__init__()
+        self.daemon = True  # Kill yourself if parent dies
+        self.file_list = file_list
+        self.out_queue = out_queue
+        self.tfilters = tfilters
+        self.tfilters[0][0].init_data(data=self.file_list)
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
+
+    def run_tfilters(self):
+        """
+        Run the tuple filters
+        """
+        packets = [None] * len(self.tfilters[0])
+        try:
+            for tfilter in self.tfilters:
+                arg = None
+                for i_ftr, ftr in enumerate(tfilter):
+                    ret_val = ftr(FilterTArg(packets[i_ftr], arg))
+                    if type(ret_val) is list:
+                        packets = [val.packet for val in ret_val]
+                    else:
+                        packet, arg = ret_val
+                        packets[i_ftr] = packet
+            return True
+        except StopIteration:
+            self.log.info("End")
+            return False
+
+    def run(self):
+        """
+        Run in separated process
+        """
+        self.log.info("Begin")
+        run = True
+        while (run):
+            run = self.run_tfilters()
 
 
 class Provider(multiprocessing.Process):
+
     """
     Exec all the TupleReaders
 

@@ -1,41 +1,9 @@
-Provider:
-  Parameters: {loop: false}
-  TFilters:
-  - TFilter:
-      Filters:
-      - CoefNpyTxtReader: {n_channels: 128}
-      - CoefNpyTxtReader: {n_channels: 64}
-      - ImageReader: {grayscale: True}
-  - TFilter:
-      Filters:
-      - MulQuantTable:
-      - Pass:
-      - Pass:
-  - TFilter:
-      Filters:
-      - Label: {name: coef}
-      - Label: {name: label}
-      - Label: {name: jpeg}
-  - TCropCoef8ImgFilter:
-      Filters:
-      - {LTCrop: null}
-      - {LTCrop: null}
-      - LTCrop: {scale: 8}
-      Parameters: {crop_size: 20}
-  - TFilter:
-      Filters:
-      - DecodeDCT: 
-      - DecodeDCT: 
-      - Pass: 
-  - TFilter:
-      Filters:
-      - Add: {val: 128} 
-      - Add: {val: 128}
-      - Pass: 
-  - TFilter:
-      Filters:
-      - Preview: {norm: 256} 
-      - Preview: {norm: 256}
-      - Preview: {norm: 256}
-
-
+Process:
+  -
+    - FileListReader: {loop: False}
+  -
+    - ImageReader: {grayscale: True}
+    - ImageReader: {grayscale: True}
+  -
+    - Preview: {norm: 256}
+    - Preview: {norm: 256}
