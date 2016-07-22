@@ -87,9 +87,9 @@ class FileListReader(object):
             else:
                 self.iter = iter(self.buf)
 
-        except EnvironmentError as enver:
+        except IOError:
             self.log.exception("Failed to read: %s", self.data)
-            raise enver
+            raise
 
     def read(self):
         '''
@@ -101,13 +101,13 @@ class FileListReader(object):
         ltargs = None
         try:
             line = next(self.iter)
-            ltargs = [FilterTArg(Packet(path=segment), None)
+            ltargs = [FilterTArg(Packet(path=segment), Packet())
                       for segment in line.split()]
 
             return ltargs
 
         except StopIteration:
-            self.log.debug("Read end. %s", self.data)
+            self.log.debug("Read end. %r", self.data)
             raise
 
     def __call__(self, args):
@@ -124,7 +124,7 @@ class Preview(object):
     Sow the data as image via OpenCV
     """
 
-    def __init__(self, norm=1, shift=0, name=None):
+    def __init__(self, norm=1, shift=0, name=None, wait=None):
         '''
         Initilize the Preview
 
@@ -140,6 +140,7 @@ class Preview(object):
         self.norm = norm
         self.shift = shift
         self.name = name
+        self.wait = wait
 
     def preview(self, targs):
         """
@@ -157,12 +158,15 @@ class Preview(object):
 
         img = packet.data / self.norm + self.shift
         cv2.imshow(name, img)
-        cv2.waitKey(10)
+        if self.wait is None:
+            cv2.waitKey()
+        else:
+            cv2.waitKey(self.wait)
 
         return targs
 
-    def __call__(self, packet):
-        return self.preview(packet)
+    def __call__(self, targs):
+        return self.preview(targs)
 
 
 class TFilter(object):
@@ -394,22 +398,23 @@ class Label(object):
 
     def __init__(self, name):
         """
-        Create the simple Label filter which creates a dict name: data
+        Create the simple Label filter name: data
         Args:
-            name: Name of the label.
-            string
+
+            name: string
+                label name
         """
         self.label_name = name
 
-    def label(self, packet):
+    def label(self, targs):
         """
         Set the packet label key
         """
-        packet['label'] = self.label_name
-        return packet
+        targs.packet.label = self.label_name
+        return targs
 
-    def __call__(self, packet):
-        return self.label(packet)
+    def __call__(self, targs):
+        return self.label(targs)
 
 
 class Mul(object):
@@ -620,22 +625,31 @@ class Pad8(object):
     Pad the packet's most left nad bottom data to be divideable by 8
     """
 
-    def pad(self, packet):
-        """
-        Pad the packet's data most left and bottom to be divideable by 8
-        """
-        data = packet['data']
-        data_shape = data.shape[0:2]
-        res = [dim % 8 for dim in data_shape]
-        borders = [8 - rem if rem != 0 else 0 for rem in res]
-        yx_borders = [(0, borders[0]), (0, borders[1]), (0, 0)]
-        pad_data = np.pad(data, yx_borders, mode='edge')
-        packet['orig_shape'] = data.shape
-        packet['data'] = pad_data
-        return packet
+    def __init__(self):
+        "Initialize the Pad8 filter"
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def __call__(self, packet):
-        return self.pad(packet)
+    def pad(self, targs):
+        """
+        Pad the targs.packet's data most left and bottom to be divideable by 8
+        """
+        try:
+            data = targs.packet.data
+            data_shape = data.shape[0:2]
+            res = [dim % 8 for dim in data_shape]
+            borders = [8 - rem if rem != 0 else 0 for rem in res]
+            yx_borders = [(0, borders[0]), (0, borders[1]), (0, 0)]
+            pad_data = np.pad(data, yx_borders, mode='edge')
+            targs.packet.orig_shape = data.shape
+            targs.packet.data = pad_data
+            return targs
+
+        except Exception:
+            self.log.exception("Exception")
+            raise
+
+    def __call__(self, targs):
+        return self.pad(targs)
 
 
 class PadCoefMirror(object):
@@ -734,24 +748,31 @@ class JPEG(object):
                 The JPEG compression quality
         '''
         self.qual = quality
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def compress(self, packet):
+    def compress(self, targ):
         '''
-        Compress the input packet's data with the jpeg encoder
+        Compress the input targ.packet's data with the jpeg encoder
         '''
-        res, img_str = cv2.imencode('.jpeg', packet['data'],
-                                    [cv2.IMWRITE_JPEG_QUALITY, self.qual])
-        assert res is True
-        img = cv2.imdecode(np.asarray(bytearray(img_str), dtype=np.uint8),
-                           cv2.IMREAD_UNCHANGED)
-        if len(img.shape) == 2:
-            img = img.reshape(img.shape[0], img.shape[1], 1)
+        try:
+            packet = targ.packet
+            res, img_str = cv2.imencode('.jpeg', packet.data,
+                                        [cv2.IMWRITE_JPEG_QUALITY, self.qual])
+            assert res is True
+            img = cv2.imdecode(np.asarray(bytearray(img_str), dtype=np.uint8),
+                               cv2.IMREAD_UNCHANGED)
+            if len(img.shape) == 2:
+                img = img.reshape(img.shape[0], img.shape[1], 1)
 
-        packet['data'] = img
-        return packet
+            packet.data = img
+            return targ
 
-    def __call__(self, packet):
-        return self.compress(packet)
+        except cv2.error:
+            self.log.exception(OpenCv)
+            raise
+
+    def __call__(self, targ):
+        return self.compress(targ)
 
 
 class ShiftImg(object):
@@ -790,8 +811,9 @@ class ShiftImg(object):
         self.rng = np.random.RandomState(rng_seed)
         assert not (self.mode == 'random' and
                     all(val == 0 for val in self.move_vec))
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def shift(self, packet, **kwargs):
+    def shift(self, targ):
         '''
         Shift data according the move vector with a mirror padding
         '''
@@ -801,40 +823,46 @@ class ShiftImg(object):
         abs_move_vec = None
         move_vec_out = None
 
-        # Use the horizontal args - kwargs if any
-        if 'move_vec' in kwargs:
-            move_vec = kwargs['move_vec']
-            abs_move_vec = np.abs(move_vec)
-            mode = None
-        else:
-            move_vec = self.move_vec
-            abs_move_vec = np.abs(self.move_vec)
-            mode = self.mode
-            move_vec_out = np.copy(self.move_vec)
-            kwargs['move_vec'] = move_vec_out
-
-        for i_val, val in enumerate(abs_move_vec):
-            if val == 0:
-                padding.append((0, 0))
-                continue
-
-            if mode == 'random':
-                val = self.rng.randint(0, val)
-                move_vec_out[i_val] = val * np.sign(move_vec[i_val])
-
-            if move_vec[i_val] >= 0:
-                padding.append((0, val))
+        try:
+            if hasattr(targ.arg, "move_vec"):
+            # Use the horizontal args - kwargs if any
+                move_vec = targ.arg.move_vec
+                abs_move_vec = np.abs(move_vec)
+                mode = None
             else:
-                padding.append((val, 0))
+                move_vec = self.move_vec
+                abs_move_vec = np.abs(self.move_vec)
+                mode = self.mode
+                move_vec_out = np.copy(self.move_vec)
+                targ.arg.move_vec = move_vec_out
 
-        pad_data = np.pad(packet['data'], padding, mode='symmetric')
-        start_y = padding[0][1]
-        start_x = padding[1][1]
-        shape_y, shape_x, _ = packet['data'].shape
-        packet['data'] = pad_data[start_y:start_y + shape_y,
-                                  start_x:start_x + shape_x]
+            for i_val, val in enumerate(abs_move_vec):
+                if val == 0:
+                    padding.append((0, 0))
+                    continue
 
-        return packet, kwargs
+                if mode == 'random':
+                    val = self.rng.randint(0, val)
+                    move_vec_out[i_val] = val * np.sign(move_vec[i_val])
 
-    def __call__(self, packet, **kwargs):
-        return self.shift(packet, **kwargs)
+                if move_vec[i_val] >= 0:
+                    padding.append((0, val))
+                else:
+                    padding.append((val, 0))
+
+            packet = targ.packet
+            pad_data = np.pad(packet.data, padding, mode='symmetric')
+            start_y = padding[0][1]
+            start_x = padding[1][1]
+            shape_y, shape_x, _ = packet.data.shape
+            packet.data = pad_data[start_y:start_y + shape_y,
+                                   start_x:start_x + shape_x]
+
+            return targ
+
+        except:
+            self.log.exception("Exception")
+            raise
+
+    def __call__(self, targ):
+        return self.shift(targ)

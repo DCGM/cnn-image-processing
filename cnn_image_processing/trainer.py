@@ -4,6 +4,8 @@ Created on May 27, 2016
 @author: isvoboda
 '''
 
+from __future__ import division
+
 import Queue
 from Queue import Empty
 import multiprocessing

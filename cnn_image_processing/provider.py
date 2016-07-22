@@ -8,7 +8,7 @@ from __future__ import print_function
 
 import logging
 import multiprocessing
-from .filters import FilterTArg
+from .filters import Packet, FilterTArg
 
 
 class Process(multiprocessing.Process):
@@ -40,7 +40,7 @@ class Process(multiprocessing.Process):
         packets = [None] * len(self.tfilters[0])
         try:
             for tfilter in self.tfilters:
-                arg = None
+                arg = Packet()
                 for i_ftr, ftr in enumerate(tfilter):
                     ret_val = ftr(FilterTArg(packets[i_ftr], arg))
                     if type(ret_val) is list:

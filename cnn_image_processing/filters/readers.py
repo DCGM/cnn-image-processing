@@ -49,14 +49,14 @@ class ImageReader(object):
             return targs
 
         except cv2.error:
-            self.log.exception("cv2.error")
-            return targs
+            self.log.exception("OpenCv")
+            raise
         except IOError:
-            self.log.exception("Error reading %s", packet.path)
-            return targs
+            self.log.exception("Error reading %r", packet.path)
+            raise
         except AttributeError:
-            self.log.exception("No path defined")
-            return targs
+            self.log.exception("Attribute error")
+            raise
 
     def __call__(self, targs):
         """
@@ -89,7 +89,7 @@ class ImageX8Reader(ImageReader):
 
         except TypeError:
             self.log.exception("Failed")
-            return targs
+            raise
 
     def crop(self, img):
         """
@@ -117,8 +117,8 @@ class CoefNpyReader(object):
         """
         Reads the numpy txt/binary array file
         """
-        packet = targs.packet
         try:
+            packet = targs.packet
             path = packet.path
             data_array = None
             txtpath = os.path.splitext(path)[0] + ".txt"
@@ -136,6 +136,7 @@ class CoefNpyReader(object):
             data_array = data_array.reshape([self.n_channels, -1,
                                              data_array.shape[1]])
             packet.data = data_array.transpose([1, 2, 0])  # [y,x,z]
+
             return targs
 
         except IOError:
@@ -143,7 +144,7 @@ class CoefNpyReader(object):
             raise
 
         except Exception:
-            self.log.exception("Unknown")
+            self.log.exception("Exception")
             raise
 
     def __call__(self, targs):

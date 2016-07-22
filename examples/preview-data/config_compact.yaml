@@ -1,0 +1,7 @@
+Process:
+  - [ FileListReader: {loop: False}                                         ]
+  - [ ImageReader: {grayscale: True},       ImageReader: {grayscale: True}  ]
+  - [ ShiftImg: {move_vec: [100, 100, 0]},  ShiftImg:                       ]
+  - [ Pass: ,                               JPEG: {quality: 5}              ]
+  - [ Label: {name: "jpg"},                 Label: {name: "corrupt"}        ]
+  - [ Preview: {norm: 256, wait: 100},      Preview: {norm: 256}            ]
