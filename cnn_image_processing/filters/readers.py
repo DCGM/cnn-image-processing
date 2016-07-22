@@ -58,11 +58,11 @@ class ImageReader(object):
             self.log.exception("No path defined")
             return targs
 
-    def __call__(self, path):
+    def __call__(self, targs):
         """
         Returns the image
         """
-        return self.read(path)
+        return self.read(targs)
 
 
 class ImageX8Reader(ImageReader):
@@ -99,7 +99,7 @@ class ImageX8Reader(ImageReader):
         return img[0:crop_shape[0], 0:crop_shape[1]]
 
 
-class CoefNpyTxtReader(object):
+class CoefNpyReader(object):
 
     """
     Reads the jpeg-coefs in numpy array txt file format.
@@ -107,16 +107,20 @@ class CoefNpyTxtReader(object):
     """
 
     def __init__(self, n_channels=64):
+        '''
+        Initilize the CoefNpyReader
+        '''
         self.n_channels = n_channels
-        self.log = logging.getLogger(__name__ + ".CoefNpyTxtReader")
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def read(self, packet):
+    def read(self, targs):
         """
-        Reads the numpy txt array file and returns the numpy array.
+        Reads the numpy txt/binary array file
         """
-        path = packet['path']
-        data_array = None
+        packet = targs.packet
         try:
+            path = packet.path
+            data_array = None
             txtpath = os.path.splitext(path)[0] + ".txt"
             npzpath = os.path.splitext(path)[0] + ".npz"
             if os.path.isfile(npzpath):
@@ -126,20 +130,21 @@ class CoefNpyTxtReader(object):
             elif os.path.isfile(txtpath):
                 data_array = np.loadtxt(fname=txtpath, dtype=np.float32)
             else:
-                raise Exception('none of those files exist')
-            if data_array is None:
-                self.log.error("Could not read data: %r", path)
+                raise IOError('None of {}, {} exist'.format(
+                    npzpath, txtpath))
+
             data_array = data_array.reshape([self.n_channels, -1,
                                              data_array.shape[1]])
-            data_array = data_array.transpose([1, 2, 0])  # [y,x,z]
+            packet.data = data_array.transpose([1, 2, 0])  # [y,x,z]
+            return targs
+
         except IOError:
             self.log.exception("IOError")
+            raise
 
-        packet['data'] = data_array
-        return packet
+        except Exception:
+            self.log.exception("Unknown")
+            raise
 
-    def __call__(self, packet):
-        """
-        Return the JPEG coefs stored in the txt file in path.
-        """
-        return self.read(packet)
+    def __call__(self, targs):
+        return self.read(targs)

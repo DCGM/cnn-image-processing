@@ -68,7 +68,11 @@ class Creator(object):
             cfilters = []
             for ftr in tfilter:
                 fid = ftr.keys()[0]
-                cfilters.append(cls.f_create(fid, **ftr[fid]))
+                if ftr[fid] is not None:
+                    cfilters.append(cls.f_create(fid, **ftr[fid]))
+                else:
+                    cfilters.append(cls.f_create(fid))
+
             ctfilters.append(cfilters)
 
         return ctfilters

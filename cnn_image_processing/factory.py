@@ -20,7 +20,7 @@ class ObjectFactory(object):
                  'THorizontalFilter': filters.THorizontalFilter,
                  'TCropCoef8ImgFilter': filters.TCropCoef8ImgFilter,
                  'TReader': filters.TFilter,
-                 'CoefNpyTxtReader': filters.CoefNpyTxtReader,
+                 'CoefNpyReader': filters.CoefNpyReader,
                  'ImageReader': filters.ImageReader,
                  'ImageX8Reader': filters.ImageX8Reader,
                  'Crop': filters.Crop,

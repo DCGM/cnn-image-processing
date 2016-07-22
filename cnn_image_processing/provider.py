@@ -52,6 +52,10 @@ class Process(multiprocessing.Process):
         except StopIteration:
             self.log.info("End")
             return False
+        except IOError:
+            return False
+        else:
+            return False
 
     def run(self):
         """

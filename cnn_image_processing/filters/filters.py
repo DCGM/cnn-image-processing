@@ -14,9 +14,10 @@ import numpy as np
 from .. utils import decode_dct
 from .. utils import code_dct
 
-# __all__ = ["Packet", "TFilter", "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul",
-#            "Div", "Add", "Sub", "JPGBlockReshape", "MullQuantTable", "Pass",
-#            "Preview", "DecodeDCT", "CodeDCT", "Pad8", "PadCoefMirror"]
+__all__ = [
+    "Packet", "FilterTArg", "FileListReader", "TFilter", "THorizontalFilter", "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul",
+    "Div", "Add", "Sub", "JPGBlockReshape", "MulQuantTable", "Pass",
+    "Preview", "DecodeDCT", "CodeDCT", "Pad8", "PadCoefMirror", "JPEG", "ShiftImg"]
 
 
 class Packet(object):
@@ -561,14 +562,14 @@ class Pass(object):
 
     "Dummy object passing the data."
 
-    def run(self, packet):
+    def run(self, targs):
         """
         Return packet.
         """
-        return packet
+        return targs
 
-    def __call__(self, packet):
-        return packet
+    def __call__(self, targs):
+        return targs
 
 
 class DecodeDCT(object):

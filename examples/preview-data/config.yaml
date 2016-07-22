@@ -3,7 +3,7 @@ Process:
     - FileListReader: {loop: False}
   -
     - ImageReader: {grayscale: True}
-    - ImageReader: {grayscale: True}
+    - CoefNpyReader: {n_channels: 64}
   -
     - Preview: {norm: 256}
-    - Preview: {norm: 256}
+    - Pass:
