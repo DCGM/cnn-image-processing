@@ -11,13 +11,15 @@ from itertools import cycle
 import cv2
 import numpy as np
 
+from .. utils import RoundBuffer
 from .. utils import decode_dct
 from .. utils import code_dct
 
 __all__ = [
-    "Packet", "FilterTArg", "FileListReader", "TFilter", "THorizontalFilter", "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul",
-    "Div", "Add", "Sub", "JPGBlockReshape", "MulQuantTable", "Pass",
-    "Preview", "DecodeDCT", "CodeDCT", "Pad8", "PadCoefMirror", "JPEG", "ShiftImg"]
+    "Packet", "FilterTArg", "FileListReader", "TFilter", "THorizontalFilter",
+    "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul", "Div", "Add",
+    "Sub", "JPGBlockReshape", "MulQuantTable", "Pass", "Preview", "DecodeDCT",
+    "CodeDCT", "Pad8", "PadDCTMirror", "JPEG", "ShiftImg"]
 
 
 class Packet(object):
@@ -98,13 +100,13 @@ class FileListReader(object):
         Packets is a vector of packets (per segment in one line)
         '''
 
-        ltargs = None
+        ttargs = None
         try:
             line = next(self.iter)
-            ltargs = [FilterTArg(Packet(path=segment), Packet())
-                      for segment in line.split()]
+            ttargs = tuple(FilterTArg(Packet(path=segment), Packet())
+                           for segment in line.split())
 
-            return ltargs
+            return ttargs
 
         except StopIteration:
             self.log.debug("Read end. %r", self.data)
@@ -156,7 +158,7 @@ class Preview(object):
         else:
             name = packet.path
 
-        img = packet.data / self.norm + self.shift
+        img = (packet.data + self.shift) / self.norm
         cv2.imshow(name, img)
         if self.wait is None:
             cv2.waitKey()
@@ -243,6 +245,27 @@ class THorizontalFilter(TFilter):
 
     def __call__(self, packets):
         return self.run(packets)
+
+
+# ToDo
+class Sampler(object):
+
+    '''
+    Data sampler
+    '''
+
+    def __init__(self, mode=None, crop=None, crop_size=None, crop_scale=None,
+                 buffer_size=None, n_samples=None):
+        self.mode = mode if mode is not None else "random"
+        self.crop_type = crop if crop is not None else "center"
+        self.crop_size = crop_size
+        self.crop_scale = crop_scale if crop_scale is not None else 1
+        buffer_size = buffer_size if buffer_size is not None else 1
+        self.buffer = RoundBuffer(max_size=buffer_size)
+        self.n_samples = n_samples
+
+    def sample(self, targ):
+        pass
 
 
 class TCropCoef8ImgFilter(TFilter):
@@ -430,16 +453,22 @@ class Mul(object):
             val: The mul coefficient.
         """
         self.val = val
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def mul(self, packet):
+    def mul(self, targ):
         """
         Mul the packet data with defined val
         """
-        packet['data'] *= self.val
-        return packet
+        try:
+            targ.packet.data *= self.val
+            return targ
 
-    def __call__(self, packet):
-        return self.mul(packet)
+        except AttributeError:
+            self.log.exception(AttributeError)
+            raise
+
+    def __call__(self, targ):
+        return self.mul(targ)
 
 
 class Div(object):
@@ -455,16 +484,22 @@ class Div(object):
             val: The div coefficient.
         """
         self.val = val
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def div(self, packet):
+    def div(self, targ):
         """
-        Div the packet data with val
+        Div the targ data with val
         """
-        packet['data'] /= self.val
-        return packet
+        try:
+            targ.packet.data /= self.val
+            return targ
 
-    def __call__(self, packet):
-        return self.div(packet)
+        except AttributeError:
+            self.log.exception(AttributeError)
+            raise
+
+    def __call__(self, targ):
+        return self.div(targ)
 
 
 class Add(object):
@@ -475,16 +510,22 @@ class Add(object):
 
     def __init__(self, val=0):
         self.val = val
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def add(self, packet):
+    def add(self, targ):
         """
-        Add a val to packet data
+        Add a val to targ.packet data
         """
-        packet['data'] += self.val
-        return packet
+        try:
+            targ.packet.data += self.val
+            return targ
 
-    def __call__(self, packet):
-        return self.add(packet)
+        except AttributeError:
+            self.log.exception(AttributeError)
+            raise
+
+    def __call__(self, targ):
+        return self.add(targ)
 
 
 class Sub(object):
@@ -495,16 +536,22 @@ class Sub(object):
 
     def __init__(self, val=0):
         self.val = val
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def sub(self, packet):
+    def sub(self, targ):
         """
-        Subtract a val from from packet data
+        Subtracts a val to targ.packet data
         """
-        packet['data'] -= self.val
-        return packet
+        try:
+            targ.packet.data -= self.val
+            return targ
 
-    def __call__(self, packet):
-        return self.sub(packet)
+        except AttributeError:
+            self.log.exception(AttributeError)
+            raise
+
+    def __call__(self, targ):
+        return self.sub(targ)
 
 
 class JPGBlockReshape(object):
@@ -514,30 +561,39 @@ class JPGBlockReshape(object):
     """
 
     def __init__(self):
-        pass
+        '''
+        Initialize the JPGBlockReshape filter
+        '''
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def reshape(self, packet):
+    def reshape(self, targ):
         """
         Reshape the packet's data into [y/8, x/8, 64]
         """
-        data = packet['data']
-        assert data.shape[2] == 1
-        shape = [dim // 8 for dim in data.shape[0:2]]
-        shape.append(64)
-        shaped_data = np.zeros(shape, dtype=np.float32)
-        step = 8
-        for y_id in xrange(shaped_data.shape[0]):
-            for x_id in xrange(shaped_data.shape[1]):
-                in_y = step * y_id
-                in_x = step * x_id
-                shaped_data[y_id, x_id] =\
-                    data[in_y:in_y + step, in_x:in_x + step].reshape(64)
+        try:
+            data = targ.packet.data
+            assert data.shape[2] == 1
+            shape = [dim // 8 for dim in data.shape[0:2]]
+            shape.append(64)
+            shaped_data = np.zeros(shape, dtype=np.float32)
+            step = 8
+            for y_id in xrange(shaped_data.shape[0]):
+                for x_id in xrange(shaped_data.shape[1]):
+                    in_y = step * y_id
+                    in_x = step * x_id
+                    shaped_data[y_id, x_id] =\
+                        data[in_y:in_y + step, in_x:in_x + step].reshape(64)
 
-        packet['data'] = shaped_data
-        return packet
+            targ.packet.data = shaped_data
 
-    def __call__(self, packet):
-        return self.reshape(packet)
+            return targ
+
+        except AttributeError:
+            self.log.exception("AttributeError")
+            raise
+
+    def __call__(self, targ):
+        return self.reshape(targ)
 
 
 class MulQuantTable(object):
@@ -547,20 +603,29 @@ class MulQuantTable(object):
     """
 
     def __init__(self):
-        pass
+        '''
+        Initialize the MulQuantTable filter
+        '''
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def mull(self, packet):
+    def mull(self, targ):
         """
         Mul the packet's data stored in the [y, x, 0:64] with its quant table
         stored in [y, x, 64:]
         """
-        data = packet['data']
-        coef_quant_data = data[:, :, 0:64] * data[:, :, 64:]
-        packet['data'] = coef_quant_data
-        return packet
+        try:
+            data = targ.packet.data
+            coef_quant_data = data[:, :, 0:64] * data[:, :, 64:]
+            targ.packet.data = coef_quant_data
 
-    def __call__(self, packet):
-        return self.mull(packet)
+            return targ
+
+        except AttributeError:
+            self.log.exception("AttributeError")
+            raise
+
+    def __call__(self, targ):
+        return self.mull(targ)
 
 
 class Pass(object):
@@ -584,39 +649,51 @@ class DecodeDCT(object):
     """
 
     def __init__(self):
-        pass
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def decode(self, packet):
+    def decode(self, targ):
         """
         Decodes the image stored as coefs into the pixels and also reshape
         the result data back from [y/8, x/8, 64] to [y, x, 1]
         """
-        packet['data'] = decode_dct(packet['data'])
-        return packet
+        try:
+            packet = targ.packet
+            packet.data = decode_dct(packet.data)
+            return targ
+        except AttributeError:
+            self.log.exception("AttributeError")
+            raise
 
-    def __call__(self, packet):
-        return self.decode(packet)
+    def __call__(self, targ):
+        return self.decode(targ)
 
 
 class CodeDCT(object):
 
     """
-    Code the image to coefs data
+    Code the image to dct coefs
     """
 
     def __init__(self):
-        pass
+        '''
+        Initialize DCT transform filter
+        '''
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def code(self, packet):
+    def code(self, targ):
         """
         Ccode the image into coefs and reshape the data from [y, x, 1] to
         [y/8, x/8, 64]
         """
-        packet['data'] = code_dct(packet['data'])
-        return packet
+        try:
+            targ.packet.data = code_dct(targ.packet.data)
+            return targ
+        except AttributeError:
+            self.log.exception(AttributeError)
+            raise
 
-    def __call__(self, packet):
-        return self.code(packet)
+    def __call__(self, targ):
+        return self.code(targ)
 
 
 class Pad8(object):
@@ -652,18 +729,21 @@ class Pad8(object):
         return self.pad(targs)
 
 
-class PadCoefMirror(object):
+class PadDCTMirror(object):
 
     '''
     Pad the packet's data representing coefficients by its mirrored view
+
+    Padding size is defined by vector of padding per axis, see
+    http://docs.scipy.org/doc/numpy/reference/generated/numpy.pad.html
+
+    Padding works only for 0 and 1 axis
     '''
 
-    def __init__(self):
+    def __init__(self, padding=None):
         '''
-        Cnstructor - initialize the vertical, horizontal and corner swap masks
+        Initialize the vertical, horizontal and corner (not used) pad masks
         '''
-        self.pad_key = 'padding'
-
         self.horizontal = np.asarray([
             +1, -1, +1, -1, +1, -1, +1, -1,
             +1, -1, +1, -1, +1, -1, +1, -1,
@@ -694,43 +774,74 @@ class PadCoefMirror(object):
             +1, -1, +1, -1, +1, -1, +1, -1,
             -1, +1, -1, +1, -1, +1, -1, +1
         ])
+        self.padding = padding
+        self.padding.append([0, 0])
+        self.counter = 0
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def pad(self, packet):
+    def pad(self, targ):
         '''
-        Mirror the edge coefficients 64 channel vector representing patch of
+        Mirror the edge dct 64 channel vector representing patch of
         8x8 pixels
         '''
-        padding = [(1, 1), (1, 1), (0, 0)]
+        padding = self.padding
         padding_ar = np.asarray(padding, np.int)
 
-        if self.pad_key in packet:
-            packet[self.pad_key] += padding_ar
-        else:
-            packet[self.pad_key] = padding_ar
+        try:
+            packet = targ.packet
 
-        pad_data = np.pad(
-            packet['data'], padding, mode='edge')
+            if hasattr(packet, 'padding'):
+                packet.padding += padding_ar
+            else:
+                packet.padding = padding_ar
 
-        for patch in pad_data[1:-1, 0]:
-            patch = patch * self.horizontal
-        for patch in pad_data[1:-1, -1]:
-            patch *= self.horizontal
+            pad_data = np.pad(packet.data, padding, mode=self.pad_dct,
+                              shape=packet.data.shape)
 
-        for patch in pad_data[0, 1:-1]:
-            patch *= self.vertical
-        for patch in pad_data[-1, 1:-1]:
-            patch *= self.vertical
+            self.counter = 0
 
-        pad_data[0, 0] *= self.corner
-        pad_data[0, -1] *= self.corner
-        pad_data[-1, 0] *= self.corner
-        pad_data[-1, -1] *= self.corner
+            packet.data = pad_data
+            return targ
 
-        packet['data'] = pad_data
-        return packet
+        except Exception:
+            self.log.exception("Exception")
+            raise
 
-    def __call__(self, packet):
-        return self.pad(packet)
+    def pad_dct(self, vector, p_width, iaxis, kwargs):
+        '''
+        Symmetry copied data to padded borders and multiplied according
+        the dct table
+        ToDo: Compute the sign procedurally
+        '''
+        if all([element == 0 for element in p_width]):
+            return vector
+
+        shape = kwargs['shape']
+        # Symmetry coppied data
+        vector[:p_width[0]] = vector[p_width[0]:p_width[0] + p_width[0]][::-1]
+
+        if p_width[1] != 0:
+            vector[-p_width[1]:] = vector[
+                -(p_width[1] + p_width[1]): -p_width[1]][::-1]
+
+        if iaxis is 0:
+            i_vertical = self.counter % shape[2]
+            if p_width[1] != 0:
+                vector[-p_width[1]:] *= self.vertical[i_vertical]
+            vector[:p_width[0]] *= self.vertical[i_vertical]
+            self.counter += 1
+
+        elif iaxis is 1:
+            i_horizontal = self.counter % shape[2]
+            if p_width[0] != 0:
+                vector[:p_width[0]] *= self.horizontal[i_horizontal]
+            vector[-p_width[1]:] *= self.horizontal[i_horizontal]
+            self.counter += 1
+
+        return vector
+
+    def __call__(self, targ):
+        return self.pad(targ)
 
 
 class JPEG(object):
@@ -768,7 +879,7 @@ class JPEG(object):
             return targ
 
         except cv2.error:
-            self.log.exception(OpenCv)
+            self.log.exception("OpenCv")
             raise
 
     def __call__(self, targ):

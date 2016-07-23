@@ -33,22 +33,41 @@ class Process(multiprocessing.Process):
         self.tfilters[0][0].init_data(data=self.file_list)
         self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def run_tfilters(self):
+    def run_tfilters(self, from_tfilter=0, to_tfilter=None, packets=None):
         """
         Run the tuple filters
         """
-        packets = [None] * len(self.tfilters[0])
+        if packets is None:
+            packets = [None] * len(self.tfilters[from_tfilter])
+
+        lpackets = []
+        i_tfilter = from_tfilter
         try:
-            for tfilter in self.tfilters:
+            for tfilter in self.tfilters[from_tfilter:to_tfilter]:
                 arg = Packet()
                 for i_ftr, ftr in enumerate(tfilter):
                     ret_val = ftr(FilterTArg(packets[i_ftr], arg))
-                    if type(ret_val) is list:
-                        packets = [val.packet for val in ret_val]
-                    else:
+                    if isinstance(ret_val, FilterTArg):
                         packet, arg = ret_val
                         packets[i_ftr] = packet
+                    elif isinstance(ret_val, tuple):
+                        packets = [val.packet for val in ret_val]
+                    elif isinstance(ret_val, list):
+                        lpackets.append([targ.packet for targ in ret_val])
+
+                i_tfilter += 1
+
+                if lpackets:
+                    assert all([len(lpackets[0]) == len(packets)
+                                for packets in lpackets])
+                    # lets recurse...
+                    tpacks = zip(*lpackets)
+                    for tpak in tpacks:
+                        self.run_tfilters(from_tfilter=i_tfilter, packets=tpak)
+                    return True
+
             return True
+
         except StopIteration:
             self.log.info("End")
             return False
@@ -63,7 +82,7 @@ class Process(multiprocessing.Process):
         """
         self.log.info("Begin")
         run = True
-        while (run):
+        while run:
             run = self.run_tfilters()
 
 

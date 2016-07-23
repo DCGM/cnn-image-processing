@@ -36,7 +36,7 @@ class ObjectFactory(object):
                  'DecodeDCT': filters.DecodeDCT,
                  'CodeDCT': filters.CodeDCT,
                  'Pad8': filters.Pad8,
-                 'PadCoefMirror': filters.PadCoefMirror,
+                 'PadDCTMirror': filters.PadDCTMirror,
                  'JPEG': filters.JPEG,
                  'ShiftImg': filters.ShiftImg}  # Static attribute
 

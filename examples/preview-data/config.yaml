@@ -3,16 +3,19 @@ Process:
     - FileListReader: {loop: False}
   -
     - ImageReader: {grayscale: True}
-    - ImageReader: {grayscale: True}
+    - CoefNpyReader: {n_channels: 64}
   -
     - ShiftImg: {move_vec: [100, 100, 0]}
-    - ShiftImg:
+    - PadDCTMirror: { padding: [[0,0],[10,10]] }
   -
     - Pass:
-    - JPEG: {quality: 5}
+    - DecodeDCT:
   -
     - Label: {name: "jpg"}
-    - Label: {name: "corrupt"}
+    - Label: {name: "dct"}
+  -
+    - Pass:
+    - Mul: {val: 1024}
   -
     - Preview: {norm: 256, wait: 100}
-    - Preview: {norm: 256}
+    - Preview: {norm: 256, shift: 128}
