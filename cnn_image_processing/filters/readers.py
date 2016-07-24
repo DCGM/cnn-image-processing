@@ -31,13 +31,13 @@ class ImageReader(object):
             else cv2.IMREAD_UNCHANGED
         self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def read(self, targs):
+    def read(self, targ):
         """
         Loads and returns the image of path.
         """
         img = None
         try:
-            packet = targs.packet
+            packet = targ.packet
             path = packet.path
             packet.data = None
             img = cv2.imread(path, self.load_flag).astype(np.float32)
@@ -46,7 +46,7 @@ class ImageReader(object):
                 img = img.reshape(img.shape[0], img.shape[1], 1)
 
             packet.data = img
-            return targs
+            return targ
 
         except cv2.error:
             self.log.exception("OpenCv")
@@ -58,11 +58,11 @@ class ImageReader(object):
             self.log.exception("Attribute error")
             raise
 
-    def __call__(self, targs):
+    def __call__(self, targ):
         """
         Returns the image
         """
-        return self.read(targs)
+        return self.read(targ)
 
 
 class ImageX8Reader(ImageReader):
@@ -77,15 +77,15 @@ class ImageX8Reader(ImageReader):
         super(ImageX8Reader, self).__init__(grayscale)
         self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def read(self, targs):
+    def read(self, targ):
         """
         Loads and returns the cropped image size divideable by 8.
         """
         try:
-            targs = super(ImageX8Reader, self).read(targs)
-            packet = targs.packet
+            targ = super(ImageX8Reader, self).read(targ)
+            packet = targ.packet
             packet.data = self.crop(packet.data)
-            return targs
+            return targ
 
         except TypeError:
             self.log.exception("Failed")
@@ -113,12 +113,12 @@ class CoefNpyReader(object):
         self.n_channels = n_channels
         self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def read(self, targs):
+    def read(self, targ):
         """
         Reads the numpy txt/binary array file
         """
         try:
-            packet = targs.packet
+            packet = targ.packet
             path = packet.path
             data_array = None
             txtpath = os.path.splitext(path)[0] + ".txt"
@@ -137,7 +137,7 @@ class CoefNpyReader(object):
                                              data_array.shape[1]])
             packet.data = data_array.transpose([1, 2, 0])  # [y,x,z]
 
-            return targs
+            return targ
 
         except IOError:
             self.log.exception("IOError")
@@ -147,5 +147,5 @@ class CoefNpyReader(object):
             self.log.exception("Exception")
             raise
 
-    def __call__(self, targs):
-        return self.read(targs)
+    def __call__(self, targ):
+        return self.read(targ)

@@ -8,7 +8,7 @@ from __future__ import print_function
 
 import logging
 import multiprocessing
-from .filters import Packet, FilterTArg
+from .filters import Packet, FilterTArg, FilterTArgs
 
 
 class Process(multiprocessing.Process):
@@ -33,27 +33,29 @@ class Process(multiprocessing.Process):
         self.tfilters[0][0].init_data(data=self.file_list)
         self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def run_tfilters(self, from_tfilter=0, to_tfilter=None, packets=None):
+    def run_tfilters(self, begin=0, end=None, packets=None):
         """
         Run the tuple filters
         """
         if packets is None:
-            packets = [None] * len(self.tfilters[from_tfilter])
+            packets = [None] * len(self.tfilters[begin])
 
         lpackets = []
-        i_tfilter = from_tfilter
+        i_tfilter = begin
         try:
-            for tfilter in self.tfilters[from_tfilter:to_tfilter]:
+            for tfilter in self.tfilters[begin:end]:
                 arg = Packet()
+
                 for i_ftr, ftr in enumerate(tfilter):
                     ret_val = ftr(FilterTArg(packets[i_ftr], arg))
                     if isinstance(ret_val, FilterTArg):
                         packet, arg = ret_val
                         packets[i_ftr] = packet
+                    elif isinstance(ret_val, FilterTArgs):
+                        lpackets.append(ret_val.packets)
+                        arg = ret_val.args
                     elif isinstance(ret_val, tuple):
                         packets = [val.packet for val in ret_val]
-                    elif isinstance(ret_val, list):
-                        lpackets.append([targ.packet for targ in ret_val])
 
                 i_tfilter += 1
 
@@ -62,8 +64,12 @@ class Process(multiprocessing.Process):
                                 for packets in lpackets])
                     # lets recurse...
                     tpacks = zip(*lpackets)
+
                     for tpak in tpacks:
-                        self.run_tfilters(from_tfilter=i_tfilter, packets=tpak)
+                        if None not in tpak:  # Filter out not complete samples
+                            ltpak = [packet for packet in tpak]
+                            self.run_tfilters(begin=i_tfilter, packets=ltpak)
+
                     return True
 
             return True

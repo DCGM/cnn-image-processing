@@ -16,10 +16,10 @@ from .. utils import decode_dct
 from .. utils import code_dct
 
 __all__ = [
-    "Packet", "FilterTArg", "FileListReader", "TFilter", "THorizontalFilter",
+    "Packet", "FilterTArg", "FilterTArgs", "FileListReader", "TFilter", "THorizontalFilter",
     "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul", "Div", "Add",
     "Sub", "JPGBlockReshape", "MulQuantTable", "Pass", "Preview", "DecodeDCT",
-    "CodeDCT", "Pad8", "PadDCTMirror", "JPEG", "ShiftImg"]
+    "CodeDCT", "Pad8", "PadDCTMirror", "JPEG", "ShiftImg", "Sampler"]
 
 
 class Packet(object):
@@ -41,6 +41,7 @@ class Packet(object):
         self.__dict__ = kwargs
 
 FilterTArg = namedtuple('FilterTArg', ['packet', 'arg'])
+FilterTArgs = namedtuple('FilterTArgs', ['packets', 'args'])
 
 
 class FileListReader(object):
@@ -73,7 +74,7 @@ class FileListReader(object):
 
     def init_data(self, data=None):
         '''
-        Initilize the data reader
+        Initialize the data reader
         '''
         if data is not None:
             self.data = data
@@ -144,12 +145,12 @@ class Preview(object):
         self.name = name
         self.wait = wait
 
-    def preview(self, targs):
+    def preview(self, targ):
         """
         Preview the packet's data as an image
         """
 
-        packet = targs.packet
+        packet = targ.packet
         name = None
         if self.name is not None:
             name = self.name
@@ -165,10 +166,10 @@ class Preview(object):
         else:
             cv2.waitKey(self.wait)
 
-        return targs
+        return targ
 
-    def __call__(self, targs):
-        return self.preview(targs)
+    def __call__(self, targ):
+        return self.preview(targ)
 
 
 class TFilter(object):
@@ -254,18 +255,101 @@ class Sampler(object):
     Data sampler
     '''
 
-    def __init__(self, mode=None, crop=None, crop_size=None, crop_scale=None,
-                 buffer_size=None, n_samples=None):
+    def __init__(self, mode=None, crop=None, crop_size=None, scale=None,
+                 buffer_size=None, n_samples=None, rng=None):
         self.mode = mode if mode is not None else "random"
         self.crop_type = crop if crop is not None else "center"
         self.crop_size = crop_size
-        self.crop_scale = crop_scale if crop_scale is not None else 1
+        if isinstance(crop_size, int):
+            self.crop_size = [crop_size, crop_size]
+        self.scale = scale if scale is not None else 1
         buffer_size = buffer_size if buffer_size is not None else 1
         self.buffer = RoundBuffer(max_size=buffer_size)
-        self.n_samples = n_samples
+        self.n_samples = n_samples if n_samples is not None else 1
+        self.rng = rng if rng != None else np.random.RandomState(5)
+        self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
     def sample(self, targ):
-        pass
+
+        self.buffer.append_round(targ)
+
+        sample_packets = []
+        sample_packets_args = []
+        w_args = False
+
+        if isinstance(targ.arg, list):  # read horizontal arguments
+            sample_packets_args = targ.arg
+        else:  # write horizontal arguments
+            sample_packets_args = [Packet() for _ in xrange(self.n_samples)]
+            w_args = True
+
+        for i_sample in xrange(self.n_samples):
+
+            crop_size = self.crop_size
+            if self.crop_size is None:
+                crop_size = sample_packets_args[i_sample].crop_size
+
+            i_buffer, pivot = self.parse_harg(sample_packets_args[i_sample])
+
+            sample_packet, i_buffer = self._sample_buf(i_buffer)
+            sample, pivot, size = self._sample_tl(
+                sample_packet, pivot, crop_size)
+            sample_packet = Packet(**{key: getattr(sample_packet, key, None)
+                                      for key in dir(sample_packet)
+                                      if key != 'data'})
+            sample_packet.data = sample
+            sample_packet.pivot = pivot
+            sample_packet.crop_size = size
+
+            sample_packets.append(sample_packet)
+
+            if w_args:  # sent the information as the horizontal arg
+                sample_packets_args[i_sample].i_buffer = i_buffer
+                sample_packets_args[i_sample].pivot = pivot
+                sample_packets_args[i_sample].crop_size = crop_size
+
+        return FilterTArgs(sample_packets, sample_packets_args)
+
+    def _sample_buf(self, i_buffer=None):
+        if i_buffer is None:
+            i_buffer = self.rng.randint(0, self.buffer.size)
+        return self.buffer[i_buffer].packet, i_buffer
+
+    def _sample_tl(self, packet, pivot=None, crop_size=None):
+        '''
+        Top left crop
+
+        Pivot of the cropped area is top left
+
+        Note: Hardcoded ommitting of most left column and most bottom row
+        '''
+        shape = [dim - 1 for dim in packet.data.shape[0:2]]
+        try:
+            if pivot is None:
+                pivot = [self.rng.randint(0, dim - cr_size)
+                         for dim, cr_size in zip(shape, crop_size)]
+
+            sc_pivot = [int(piv * self.scale) for piv in pivot]
+            sc_size = [int(size * self.scale) for size in crop_size]
+            crop = packet.data[
+                sc_pivot[0]:sc_pivot[0] + sc_size[0],
+                sc_pivot[1]:sc_pivot[1] + sc_size[1]]
+
+            return crop, sc_pivot, sc_size
+
+        except ValueError as val_err:
+            path = packet.data.path
+            self.log.error(" ".join((val_err.message, "Generate pivot", path)))
+            return None, sc_pivot, sc_size
+
+    def parse_harg(self, arg):
+        try:
+            return arg.i_buffer, arg.pivot
+        except AttributeError:
+            return None, None
+
+    def __call__(self, targ):
+        return self.sample(targ)
 
 
 class TCropCoef8ImgFilter(TFilter):
@@ -429,15 +513,15 @@ class Label(object):
         """
         self.label_name = name
 
-    def label(self, targs):
+    def label(self, targ):
         """
         Set the packet label key
         """
-        targs.packet.label = self.label_name
-        return targs
+        targ.packet.label = self.label_name
+        return targ
 
-    def __call__(self, targs):
-        return self.label(targs)
+    def __call__(self, targ):
+        return self.label(targ)
 
 
 class Mul(object):
@@ -632,14 +716,14 @@ class Pass(object):
 
     "Dummy object passing the data."
 
-    def run(self, targs):
+    def run(self, targ):
         """
         Return packet.
         """
-        return targs
+        return targ
 
-    def __call__(self, targs):
-        return targs
+    def __call__(self, targ):
+        return targ
 
 
 class DecodeDCT(object):
@@ -706,27 +790,27 @@ class Pad8(object):
         "Initialize the Pad8 filter"
         self.log = logging.getLogger(".".join([__name__, type(self).__name__]))
 
-    def pad(self, targs):
+    def pad(self, targ):
         """
-        Pad the targs.packet's data most left and bottom to be divideable by 8
+        Pad the targ.packet's data most left and bottom to be divideable by 8
         """
         try:
-            data = targs.packet.data
+            data = targ.packet.data
             data_shape = data.shape[0:2]
             res = [dim % 8 for dim in data_shape]
             borders = [8 - rem if rem != 0 else 0 for rem in res]
             yx_borders = [(0, borders[0]), (0, borders[1]), (0, 0)]
             pad_data = np.pad(data, yx_borders, mode='edge')
-            targs.packet.orig_shape = data.shape
-            targs.packet.data = pad_data
-            return targs
+            targ.packet.orig_shape = data.shape
+            targ.packet.data = pad_data
+            return targ
 
         except Exception:
             self.log.exception("Exception")
             raise
 
-    def __call__(self, targs):
-        return self.pad(targs)
+    def __call__(self, targ):
+        return self.pad(targ)
 
 
 class PadDCTMirror(object):

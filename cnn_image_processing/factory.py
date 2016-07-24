@@ -38,7 +38,8 @@ class ObjectFactory(object):
                  'Pad8': filters.Pad8,
                  'PadDCTMirror': filters.PadDCTMirror,
                  'JPEG': filters.JPEG,
-                 'ShiftImg': filters.ShiftImg}  # Static attribute
+                 'ShiftImg': filters.ShiftImg,
+                 'Sampler': filters.Sampler}  # Static attribute
 
     @classmethod
     def create_object(cls, id_object, **kwargs):

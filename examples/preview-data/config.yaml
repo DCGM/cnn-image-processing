@@ -5,8 +5,11 @@ Process:
     - ImageReader: {grayscale: True}
     - CoefNpyReader: {n_channels: 64}
   -
-    - ShiftImg: {move_vec: [100, 100, 0]}
-    - PadDCTMirror: { padding: [[0,0],[10,10]] }
+    - Sampler: {crop_size: 128, n_samples: 64, buffer_size: 3}
+    - Sampler: {scale: 0.125, n_samples: 64, buffer_size: 3}
+  # -
+  #   - ShiftImg: {move_vec: [100, 100, 0]}
+  #   - PadDCTMirror: { padding: [[0,0],[10,10]] }
   -
     - Pass:
     - DecodeDCT:
@@ -17,5 +20,5 @@ Process:
     - Pass:
     - Mul: {val: 1024}
   -
-    - Preview: {norm: 256, wait: 100}
-    - Preview: {norm: 256, shift: 128}
+    - Preview: {norm: 256, wait: 1}
+    - Preview: {norm: 256, shift: 128, wait: 100}
