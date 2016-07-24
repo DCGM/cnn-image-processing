@@ -5,6 +5,22 @@ Filters
 from __future__ import division
 from __future__ import print_function
 
+__all__ = [
+    "Packet", "FilterTArg", "FilterTArgs",
+    "FileListReader",
+    "Pass", "Label",
+    "Mul", "Div", "Add", "Sub",
+    "JPGBlockReshape", "MulQuantTable", "DecodeDCT", "CodeDCT",
+    "Pad8", "PadDCTMirror",
+    "Preview",
+    "JPEG",
+    "ShiftImg",
+    "Sampler",
+    "TFilter", "THorizontalFilter", "TCropCoef8ImgFilter",  # deprecated
+    "Crop", "LTCrop",                                       # deprecated
+]
+
+
 import logging
 from collections import namedtuple
 from itertools import cycle
@@ -14,12 +30,6 @@ import numpy as np
 from .. utils import RoundBuffer
 from .. utils import decode_dct
 from .. utils import code_dct
-
-__all__ = [
-    "Packet", "FilterTArg", "FilterTArgs", "FileListReader", "TFilter", "THorizontalFilter",
-    "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul", "Div", "Add",
-    "Sub", "JPGBlockReshape", "MulQuantTable", "Pass", "Preview", "DecodeDCT",
-    "CodeDCT", "Pad8", "PadDCTMirror", "JPEG", "ShiftImg", "Sampler"]
 
 
 class Packet(object):
