@@ -19,7 +19,7 @@ class ImageReader(object):
 
     def __init__(self, grayscale=bool):
         self.load_flag = cv2.IMREAD_GRAYSCALE if grayscale\
-            else cv2.IMREAD_UNCHANGED
+            else cv2.IMREAD_COLOR
         self.log = logging.getLogger(__name__ + ".ImageReader")
 
     def read(self, packet):
@@ -29,10 +29,11 @@ class ImageReader(object):
         img = None
         try:
             path = packet['path']
-            img = cv2.imread(path, self.load_flag).astype(np.float32)
+            img = cv2.imread(path, self.load_flag)
             if img is None:
                 self.log.error("Could not read image: %r", path)
                 return None
+            img = img.astype(np.float32)
         except cv2.error:
             self.log.exception("cv2.error")
         except IOError as ioe:
