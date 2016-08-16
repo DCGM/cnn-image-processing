@@ -22,6 +22,7 @@ class ObjectFactory(object):
                  'CoefNpyTxtReader': filters.CoefNpyTxtReader,
                  'ImageReader': filters.ImageReader,
                  'ImageX8Reader': filters.ImageX8Reader,
+                 'TupleReader': filters.TupleReader,
                  'Crop': filters.Crop,
                  'LTCrop': filters.LTCrop,
                  'Label': filters.Label,
@@ -37,6 +38,9 @@ class ObjectFactory(object):
                  'Pad8': filters.Pad8,
                  'PadCoefMirror': filters.PadCoefMirror,
                  'JPEG': filters.JPEG,
+                 'Resize': filters.Resize,
+                 'Round': filters.Round,
+                 'FixedCrop': filters.FixedCrop,
                  'ShiftImg': filters.ShiftImg}  # Static attribute
 
     @classmethod

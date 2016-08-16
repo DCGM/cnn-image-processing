@@ -723,3 +723,75 @@ class ShiftImg(object):
 
     def __call__(self, packet, **kwargs):
         return self.shift(packet, **kwargs)
+
+class Resize(object):
+
+    """
+    Resize image.
+    """
+
+    def __init__(self, scale=0.5):
+        self.scaleFactor = scale
+
+    def scale(self, packet):
+        """
+        Resize image by scale - using cv2.INTER_AREA
+        """
+        packet['data'] = cv2.resize(packet['data'], (0,0), fx=self.scaleFactor, fy=self.scaleFactor, interpolation=cv2.INTER_NEAREST)
+        shape = packet['data'].shape
+        packet['data'] = np.reshape( packet['data'], (shape[0], shape[1], -1))
+        return packet
+
+    def __call__(self, packet):
+        return self.scale(packet)
+
+
+class Round(object):
+
+    """
+    Round values.
+    """
+
+    def __init__(self):
+        self.i = 1
+
+    def round(self, packet):
+        """
+        Subtract a val from from packet data
+        """
+        packet['data'] = np.round(packet['data'])
+        return packet
+
+    def __call__(self, packet):
+        return self.round(packet)
+
+class FixedCrop(object):
+
+    """
+    Crop center portion of the image.
+    """
+
+    def __init__(self, size=10):
+        self.size = size
+
+    def crop(self, packet):
+        """
+        Crop center portion of the image.
+        """
+        border = (int((packet['data'].shape[0]-self.size)/2), int((packet['data'].shape[1]-self.size)/2))
+        packet['data'] = packet['data'][ border[0]:border[0]+self.size, border[1]:border[1]+self.size]
+        return packet
+
+    def __call__(self, packet):
+        return self.crop(packet)
+
+
+class TRandomCropper(object):
+
+    """
+    Crop random area around an annotated position
+    """
+
+    def __init__(self, size, random_seed=1):
+        self.RNG = np.random.RandomState(random_seed)
+        self.size = size()

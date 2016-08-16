@@ -328,7 +328,11 @@ class ActivationStat(object):
         for key, data in self.list_blobs:
             # average only of positive values
             # average of every activation map in the batch
-            avg_data = np.average(net.blobs[key].data > 0, (0, 2, 3))
+            if len(net.blobs[key].shape) == 2:
+                avg_data = np.average(net.blobs[key].data > 0, (0))
+            else:
+                avg_data = np.average(net.blobs[key].data > 0, (0, 2, 3))
+
             data.append_round(avg_data)
 
     def print_stats(self):

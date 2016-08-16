@@ -51,6 +51,26 @@ class ImageReader(object):
         """
         return self.read(path)
 
+class TupleReader(object):
+
+    """
+    Reads tuple of float values separated by ',' - e.g. 1.2,5,3.4
+    """
+
+    def __init__(self):
+        self.log = logging.getLogger(__name__ + ".TupleReader")
+
+    def __call__(self, packet):
+        """
+        Converts tuple string to numpy array
+        """
+        try:
+            packet['data'] = [float(x) for x in packet['path'].split(',')]
+            packet['data'] = np.asarray(packet['data']).astype(np.float32).reshape(1,1,-1)
+        except:
+            self.log.exception("Failed to parse float tuple '{}'".format(packet['path']))
+        return packet
+
 
 class ImageX8Reader(ImageReader):
     """
