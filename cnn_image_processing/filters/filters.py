@@ -8,6 +8,8 @@ from __future__ import print_function
 import logging
 import cv2
 import numpy as np
+import math
+import copy
 
 from .. utils import decode_dct
 from .. utils import code_dct
@@ -795,3 +797,152 @@ class TRandomCropper(object):
     def __init__(self, size, random_seed=1):
         self.RNG = np.random.RandomState(random_seed)
         self.size = size()
+
+
+def warpPerspective(rx, ry, rz, fov, img, positions=None, shift=(0,0)):
+
+    s = max(img.shape[0:2])
+    rotVec = np.asarray((rx*np.pi/180,ry*np.pi/180, rz*np.pi/180))
+    rotMat, j = cv2.Rodrigues(rotVec)
+    rotMat[0, 2] = 0
+    rotMat[1, 2] = 0
+    rotMat[2, 2] = 1
+
+    f = 0.3
+    trnMat1 = np.asarray(
+        (1, 0, -img.shape[1]/2,
+         0, 1, -img.shape[0]/2,
+         0, 0, 1)).reshape(3, 3)
+
+    T1 = np.dot(rotMat, trnMat1)
+    distance = (s/2)/math.tan(fov*np.pi/180)
+    T1[2, 2] += distance
+
+    cameraT = np.asarray(
+        (distance, 0, img.shape[1]/2 + shift[1],
+         0, distance, img.shape[0]/2 + shift[0],
+         0, 0, 1)).reshape(3,3)
+
+    T2 = np.dot(cameraT, T1)
+
+    newImage = cv2.warpPerspective(img, T2, (img.shape[1], img.shape[0]), borderMode=cv2.BORDER_REPLICATE, flags=cv2.INTER_CUBIC)
+    if positions is None:
+        return newImage
+    else:
+        return newImage, np.squeeze( cv2.perspectiveTransform(positions[None, :, :], T2), axis=0)
+
+class VirtualCamera(object):
+    """
+    Transform image with random camera. X and Y are in the image plane, Z point to the camera. maxShift is in pixels. The rotation deviations are in degrees.
+    """
+
+    def __init__(self, rotationX_sdev, rotationY_sdev, rotationZ_sdev, min_fov, max_fov, max_shift):
+        self.rotationX_sdev = rotationX_sdev
+        self.rotationY_sdev = rotationY_sdev
+        self.rotationZ_sdev = rotationZ_sdev
+        self.min_fov = min_fov
+        self.max_fov = max_fov
+        self.max_shift = max_shift
+
+    def __call__(self, packet):
+        #geometric transformations
+        rx = np.random.standard_normal() * self.rotationX_sdev
+        ry = np.random.standard_normal() * self.rotationY_sdev
+        rz = np.random.standard_normal() * self.rotationZ_sdev
+        fov = np.random.uniform(self.min_fov, self.max_fov)
+        shift = np.random.standard_normal(2)
+        shift = shift / np.sum(shift**2)**0.5 * np.random.uniform(self.max_shift)
+
+        packet['data'] = warpPerspective(rx, ry, rz, fov, packet['data'], shift=shift)
+
+        return packet
+
+class Noise(object):
+    def __init__(self, min_noise, max_noise):
+        self.min_noise = min_noise
+        self.max_noise = max_noise
+
+    def __call__(self, packet):
+        noiseSdev = np.random.uniform(self.min_noise, self.max_noise)
+        packet['data'] = packet['data'] + np.random.randn(*packet['data'].shape) * noiseSdev
+        return packet
+
+
+class ColorBalance(object):
+    def __init__(self, color_sdev):
+        self.color_sdev = color_sdev
+    def __call__(self, packet):
+        img = packet['data']
+        colorCoeff = [2**(np.random.standard_normal()*self.color_sdev) for x in range(img.shape[2])]
+        for i, coef in enumerate(colorCoeff):
+            img[:, :, i] *= coef
+        packet['data'] = img
+        return packet
+
+
+class ReduceContrast(object):
+    """
+    Can reduce contrast by randomly shifting zero intesity up (up to min_intensity) and
+    shifting highest intensity down (at most to max_intensity).
+    """
+    def __init__(self, min_intensity, max_intensity):
+        self.min_intensity = min_intensity
+        self.max_intensity = max_intensity
+
+    def __call__(self, packet):
+        minVal = np.random.uniform(0, self.min_intensity)
+        maxVal = np.random.uniform(self.max_intensity, 255)
+        packet['data'] = packet['data']/255.0 * (maxVal-minVal) + minVal
+        return packet
+
+class GammaCorrection(object):
+    """
+    Runs the image throug gamma correction:
+    im = im**gamma / (255**gamma) * 255,
+    where
+    gamma = 2**normal(gamma_sdev)
+    """
+    def __init__(self, gamma_sdev):
+        self.gamma_sdev = gamma_sdev
+
+    def __call__(self, packet):
+        gamma = 2**(np.random.standard_normal()*self.gamma_sdev)
+        packet['data'] = (packet['data'].copy().astype(np.float32)**gamma) / (255**gamma) * 255
+        return packet
+
+class Flip(object):
+    """
+    Flips image randomly in horizontal (or vertical) direction.
+    """
+    def __init__(self, horizontal, vertical):
+        self.horizontal = horizontal
+        self.vertical = vertical
+    def __call__(self, packet):
+        if self.horizontal and np.random.randint(2):
+            packet['data'] = np.fliplr(packet['data'])
+        if self.vertical and np.random.randint(2):
+            packet['data'] = np.flipud(packet['data'])
+        return packet
+
+
+class Copy(object):
+    """
+    Just create a data copy
+    """
+    def __init__(self):
+        pass
+    def __call__(self, packet):
+        old = packet['data']
+        packet = copy.copy(packet)
+        packet['data'] = np.copy(packet['data'])
+        newPacket = {}
+        return packet
+
+class ClipValues(object):
+    def __init__(self, minVal=0, maxVal=255):
+        self.minVal = minVal
+        self.maxVal = maxVal
+        pass
+    def __call__(self, packet):
+        packet['data'] = np.maximum( np.minimum(packet['data'], self.maxVal), self.minVal)
+        return packet

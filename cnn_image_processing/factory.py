@@ -41,7 +41,16 @@ class ObjectFactory(object):
                  'Resize': filters.Resize,
                  'Round': filters.Round,
                  'FixedCrop': filters.FixedCrop,
-                 'ShiftImg': filters.ShiftImg}  # Static attribute
+                 'ShiftImg': filters.ShiftImg,
+                 'GammaCorrection': filters.GammaCorrection,
+                 'ReduceContrast': filters.ReduceContrast,
+                 'ColorBalance': filters.ColorBalance,
+                 'Noise': filters.Noise,
+                 'VirtualCamera': filters.VirtualCamera,
+                 'Flip': filters.Flip,
+                 'Copy': filters.Copy,
+                 'ClipValues': filters.ClipValues
+                 }
 
     @classmethod
     def create_object(cls, id_object, **kwargs):
