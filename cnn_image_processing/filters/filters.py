@@ -18,133 +18,7 @@ from .. utils import code_dct
 #            "Div", "Add", "Sub", "JPGBlockReshape", "MullQuantTable", "Pass",
 #            "Preview", "DecodeDCT", "CodeDCT", "Pad8", "PadCoefMirror"]
 
-
-class TFilter(object):
-
-    "Tuple Filter container."
-
-    def __init__(self, filters=None):
-        """
-        TFileter constructor.
-        Args:
-            filters: list or tuple of filters.
-        """
-        self.filters = filters
-
-    def n_filters(self):
-        """
-        Number of filters getter
-        """
-        if self.filters is not None:
-            return len(self.filters)
-        else:
-            return 0
-
-    def run(self, packets):
-        """
-        Runs all the filters with input packets.
-        Args:
-            packets: list or tuple of packets - same length as filters.
-        """
-        assert len(self.filters) == len(packets)
-        flag = True
-        l_result = [None] * len(self.filters)
-        for i_filter, pfilter in enumerate(self.filters):
-            l_result[i_filter] = pfilter(packets[i_filter])
-            flag &= l_result[i_filter] is not None
-
-        if flag:
-            return tuple(l_result)
-        else:
-            return None
-
-    def __call__(self, packets):
-        return self.run(packets)
-
-
-class THorizontalFilter(TFilter):
-
-    '''
-    Tuple horizontal passing filter etends the TFilter
-    '''
-
-    def __init__(self, filters=None):
-        super(THorizontalFilter, self).__init__(filters)
-
-    def run(self, packets):
-        """
-         Runs all the filters with input packets.
-         Args:
-             packets: list or tuple of packets - same length as filters.
-         """
-        assert len(self.filters) == len(packets)
-        flag = True
-        l_result = [None] * len(self.filters)
-        hkwargs = {}
-
-        for i_filter, pfilter in enumerate(self.filters):
-            l_result[i_filter], hkwargs = pfilter(packets[i_filter], **hkwargs)
-            flag &= l_result[i_filter] is not None
-
-        if flag:
-            return tuple(l_result)
-        else:
-            return None
-
-    def __call__(self, packets):
-        return self.run(packets)
-
-
-class TCropCoef8ImgFilter(TFilter):
-
-    """
-    Specialized cropper for the n-tupple of jpeg-coef and n-image.
-    Crop is obtained only from the image size divideable by 8.
-    """
-
-    def __init__(self, rng=None, crop_size=3, filters=None):
-        """
-        GenerateCropsFilter constructor
-        Args:
-          rng: Random state generator.
-          crop_size: Is the crop size of the coef-jpeg data.
-                For an image it is 8 x size.
-        """
-        super(TCropCoef8ImgFilter, self).__init__(filters)
-        self.rng = rng if rng != None else np.random.RandomState(5)
-        self.filters = filters
-        self.crop_size = crop_size
-        self.log = logging.getLogger(__name__ + ".TCropCoef8ImgFilter")
-
-    def run(self, packets):
-        """
-        Generates the crop pivot and call all the crop filters in self.filters
-        Args:
-            data: The packets to be cropped from
-        """
-        assert len(packets) == len(self.filters)
-        # always ommit the last row and column in the coef data
-        shape = np.asarray(packets[0]['data'].shape[0:2]) - 1
-        try:
-            pivot = [self.rng.randint(0, dim - self.crop_size)
-                     for dim in shape]
-        except ValueError as val_err:
-            path = packets[0]['path']
-            self.log.error(" ".join((val_err.message, "Generate pivot", path)))
-            return None
-        pivot = np.asarray(pivot)
-        crop_size = np.asarray((self.crop_size, self.crop_size))
-
-        crops = []
-        for filter_crop, packet in zip(self.filters, packets):
-            crop_packet = filter_crop(packet, pivot, crop_size)
-            crops.append(crop_packet)
-
-        return tuple(crops)
-
-    def __call__(self, data):
-        return self.run(data)
-
+from ..utilities import parameter, Configurable, ContinuePipeline, TerminatePipeline
 
 class Crop(object):
 
@@ -240,120 +114,53 @@ class LTCrop(object):
         return self.crop(packet=packet, pivot=pivot, size=size)
 
 
-class Label(object):
-
+class Label(Configurable):
     """
-    Label the data - creates the dictionary label_name: data
+    Label the packets - adds label_name: data
+
+    Example:
+    Label: {label_name: "Some label"}
     """
+    def addParams(self,):
+        self.params.append(parameter(
+            'label_name', required=True, help='The label value.', parser=str))
 
-    def __init__(self, name):
-        """
-        Create the simple Label filter which creates a dict name: data
-        Args:
-            name: Name of the label.
-            string
-        """
-        self.label_name = name
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-    def label(self, packet):
-        """
-        Set the packet label key
-        """
+    def __call__(self, packet, previous):
         packet['label'] = self.label_name
-        return packet
+        return [packet]
 
-    def __call__(self, packet):
-        return self.label(packet)
-
-
-class Mul(object):
-
+class MulAdd(Configurable):
     """
-    Multiplies data with the given scalar.
+    Multiplies data with the given scalar and adds another scalar.
+    Multiplies first, adds second.
+    Supports horizontal operation propagation.
+
+    Example:
+    MulAdd: {'mul': 0.004, 'add': -0.5}
     """
+    def addParams(self,):
+        self.params.append(parameter(
+            'mul', required=False, default=1.0, parser=float, help='Multiplication factor.'))
+        self.params.append(parameter(
+            'add', required=False, default=0.0, parser=float, help='Additive factor.'))
 
-    def __init__(self, val=1):
-        """
-        Initialize the simple multiplier
-        Args:
-            val: The mul coefficient.
-        """
-        self.val = val
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+        self.operation = lambda x: x * self.mul + self.add
 
-    def mul(self, packet):
-        """
-        Mul the packet data with defined val
-        """
-        packet['data'] *= self.val
-        return packet
-
-    def __call__(self, packet):
-        return self.mul(packet)
-
-
-class Div(object):
-
-    """
-    Divides data with the given scalar.
-    """
-
-    def __init__(self, val=1):
-        """
-        Initialize the simple multiplier
-        Args:
-            val: The div coefficient.
-        """
-        self.val = val
-
-    def div(self, packet):
-        """
-        Div the packet data with val
-        """
-        packet['data'] /= self.val
-        return packet
-
-    def __call__(self, packet):
-        return self.div(packet)
-
-
-class Add(object):
-
-    """
-    Add an value from data.
-    """
-
-    def __init__(self, val=0):
-        self.val = val
-
-    def add(self, packet):
-        """
-        Add a val to packet data
-        """
-        packet['data'] += self.val
-        return packet
-
-    def __call__(self, packet):
-        return self.add(packet)
-
-
-class Sub(object):
-
-    """
-    Subtract an value from data.
-    """
-
-    def __init__(self, val=0):
-        self.val = val
-
-    def sub(self, packet):
-        """
-        Subtract a val from from packet data
-        """
-        packet['data'] -= self.val
-        return packet
-
-    def __call__(self, packet):
-        return self.sub(packet)
+    def __call__(self, packet, previous):
+        packet['data'] = self.operation(packet['data'])
+        previous['op'] = self.operation
+        return [packet]
 
 
 class JPGBlockReshape(object):
@@ -412,51 +219,61 @@ class MulQuantTable(object):
         return self.mull(packet)
 
 
-class Pass(object):
+class Pass(Configurable):
+    """
+    Dummy filter passing the data forward.
 
-    "Dummy object passing the data."
+    Example:
+    Pass: {}
+    """
 
-    def run(self, packet):
-        """
-        Return packet.
-        """
-        return packet
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-    def __call__(self, packet):
-        return packet
+    def __call__(self, packet, previous):
+        return [packet]
 
 
-class Preview(object):
-
+class Preview(Configurable):
     """
     Try to preview the packet's data as the image via OpenCV
+
+    Example:
+    Preview: {norm=1, shift=0, name='Data'}
     """
 
-    def __init__(self, norm=1, shift=0, name=None):
-        self.norm = norm
-        self.shift = shift
-        self.name = name
+    def addParams(self):
+        self.params.append(parameter(
+            'norm', required=False, default=1.0, parser=float,
+            help='Image will be multiplied by this number.'))
+        self.params.append(parameter(
+            'shift', required=False, default=0, parser=float,
+            help='This number will be added to the image after the multiplication.'))
+        self.params.append(parameter(
+            'name', required=False, default=None, parser=str,
+            help='Name of a window used to display the images. Uses packet["label"] in not specified'))
 
-    def preview(self, packet):
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+
+    def __call__(self, packet, previous):
         """
         Preview the packet's data as an image
         """
-        name = None
-        if self.name is None:
-            if 'label' in packet:
-                name = packet['label']
-            else:
-                name = packet['path']
-        else:
-            name = self.name
-
+        name = self.name
+        if name is None and 'label' in packet:
+            name = packet['label']
         img = packet['data'] / self.norm + self.shift
         cv2.imshow(name, img)
-        cv2.waitKey(1000)
-        return packet
+        cv2.waitKey(1)
 
-    def __call__(self, packet):
-        return self.preview(packet)
+        return [packet]
 
 
 class DecodeDCT(object):
@@ -946,3 +763,27 @@ class ClipValues(object):
     def __call__(self, packet):
         packet['data'] = np.maximum( np.minimum(packet['data'], self.maxVal), self.minVal)
         return packet
+
+
+class HorizontalPassPackets(Configurable):
+    """
+    Does nothing - only passes packets to filters in the same pipeline stage.
+
+    Example:
+    HorizontalPassPackets: {}
+    """
+
+    def addParams(self):
+        pass
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+
+    def __call__(self, packet, previous):
+        if 'packets' not in previous.keys():
+            previous['packets'] = []
+        previous['packets'].append(packet)
+        return [packet]

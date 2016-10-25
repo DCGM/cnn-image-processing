@@ -6,8 +6,8 @@ Created on May 27, 2016
 
 from __future__ import print_function
 
-from .factory import ObjectFactory
-from .provider import Provider
+from .process import Process
+from .factory import FilterFactory
 from .sampler import Sampler
 from .trainer import Trainer
 from .fcn import FCN
@@ -15,9 +15,9 @@ from .fcn import FCN
 
 class Creator(object):
     """
-    Create the readers and filters according the configuration file.
+    Create objects according the configuration file.
     """
-    f_create = ObjectFactory.create_object
+    create_filter = FilterFactory.create_object
 
     @classmethod
     def parse_filters(cls, l_filters):
@@ -27,44 +27,29 @@ class Creator(object):
         new_filters = []
         for fil in l_filters:
             (fil_id, fil_params), = fil.items()
-            if fil_params != None:
-                new_filters.append(cls.f_create(fil_id, **fil_params))
-            else:
-                new_filters.append(cls.f_create(fil_id))
-
+            if fil_params is None:
+                fil_params = {}
+            new_filter = cls.f_create(fil_id, fil_params)
+            new_filters.append(new_filter)
         return new_filters
 
     @classmethod
-    def parse_tuples(cls, tuples):
+    def parse_pipeline(cls, pipeline_config):
         """
         Parse list of filter tuples.
         """
-        tup_filters = []
-        filters = None
-        for tup_f in tuples:
-            parameters = dict()
-            for (key_id, val) in tup_f.items():
-                for (param_id, param_val) in val.items():
-                    if param_id == "Filters" or param_id == "Readers":
-                        filters = cls.parse_filters(param_val)
-                    elif param_id == "Parameters" and param_val is not None:
-                        parameters.update(param_val)
-                # Fixme: if parameters == None, than fails
-                parameters['filters'] = filters
-                assert parameters != None
-                t_fils = cls.f_create(key_id, **parameters)
-                tup_filters.append(t_fils)
-
-        return tup_filters
+        pipeline = []
+        for stage_config in pipeline_config:
+            pipeline.append(cls.parse_filters(stage_config))
+        return pipeline
 
     @classmethod
     def create_provider(cls, config):
         """
         Creates provider.
         """
-        tuple_filters = cls.parse_tuples(config['TFilters'])
-        parameters = config['Parameters']
-        return Provider(t_readers=tuple_filters, **parameters)
+        pipeline_config = cls.parse_pipeline(config['pipeline'])
+        return Process(pipeline=pipeline_config, name=config['name'])
 
     @classmethod
     def create_sampler(cls, config):
