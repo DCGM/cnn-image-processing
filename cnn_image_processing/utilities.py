@@ -2,6 +2,7 @@ from __future__ import print_function
 
 import logging
 import copy
+from factory import FilterFactory
 
 
 class ContinuePipeline(Exception):
@@ -49,7 +50,20 @@ class parameter(object):
             'default', self.default)
 
 
+class FactoryRegister(type):
+    ''' This is a metaclass (type) used to register all Configurable classes
+    with filter factory
+    '''
+    def __new__(cls, clsname, bases, attrs):
+        newClass = super(FactoryRegister, cls).__new__(cls, clsname, bases, attrs)
+        FilterFactory.register(clsname, newClass)
+        return newClass
+
+
 class Configurable(object):
+    #so that all child classes register automatically with factory
+    __metaclass__ = FactoryRegister
+
     def __init__(self):
         self.params = []
         self.log = logging.getLogger(__name__ + "." + type(self).__name__)

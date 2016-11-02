@@ -8,54 +8,18 @@ class FilterFactory(object):
     @classmethod
     def register(cls, name, impl):
         if name in cls.factories:
-            raise RuntimeError('A filter was registered multiple times.')
+            raise RuntimeError('A filter "{}" was registered multiple times.'.format(name))
         cls.factories[name] = impl
 
     @classmethod
     def print_registered_filters(cls):
+        '''
+        This method is automatically called for all classes inheriting
+        from class Configurable due to FactoryRegister metaclass.
+        '''
         print('Registered filters.')
         for filterName in cls.factories:
             print(filterName)
-
-
-    '''Pass': filters.Pass,
-                 'TFilter':  filters.TFilter,
-                 'THorizontalFilter': filters.THorizontalFilter,
-                 'TCropCoef8ImgFilter': filters.TCropCoef8ImgFilter,
-                 'TReader': filters.TFilter,
-                 'CoefNpyTxtReader': filters.CoefNpyTxtReader,
-                 'ImageReader': filters.ImageReader,
-                 'ImageX8Reader': filters.ImageX8Reader,
-                 'TupleReader': filters.TupleReader,
-                 'Crop': filters.Crop,
-                 'LTCrop': filters.LTCrop,
-                 'Label': filters.Label,
-                 'Mul': filters.Mul,
-                 'Div': filters.Div,
-                 'Add': filters.Add,
-                 'Sub': filters.Sub,
-                 'JPGBlockReshape': filters.JPGBlockReshape,
-                 'MulQuantTable': filters.MulQuantTable,
-                 'Preview': filters.Preview,
-                 'DecodeDCT': filters.DecodeDCT,
-                 'CodeDCT': filters.CodeDCT,
-                 'Pad8': filters.Pad8,
-                 'PadCoefMirror': filters.PadCoefMirror,
-                 'JPEG': filters.JPEG,
-                 'Resize': filters.Resize,
-                 'Round': filters.Round,
-                 'FixedCrop': filters.FixedCrop,
-                 'ShiftImg': filters.ShiftImg,
-                 'GammaCorrection': filters.GammaCorrection,
-                 'ReduceContrast': filters.ReduceContrast,
-                 'ColorBalance': filters.ColorBalance,
-                 'Noise': filters.Noise,
-                 'VirtualCamera': filters.VirtualCamera,
-                 'Flip': filters.Flip,
-                 'Copy': filters.Copy,
-                 'ClipValues': filters.ClipValues
-                 }
-        '''
 
     @classmethod
     def create_object(cls, id_object, config):
