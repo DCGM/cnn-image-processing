@@ -62,16 +62,16 @@ class Configurable(object):
             config = copy.copy(config)
             for param in self.params:
                 value = param(config)
-                setattr( self, param.field, value)
+                setattr(self, param.field, value)
         except AttributeError as ex:
             self.log.error(ex)
             self.printParams()
-            exit(-1)
+            raise AttributeError
 
         if config:
             self.log.error('Some params were not parsed. Remaining "{}"'.format(str(config)))
             self.printParams()
-            exit(-1)
+            raise AttributeError
 
     def printParams(self):
         self.log.info('Accepted params are:')

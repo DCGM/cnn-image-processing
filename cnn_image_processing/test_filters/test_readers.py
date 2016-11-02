@@ -14,7 +14,11 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class test_FilterFactory(unittest.TestCase):
     def test_registered_filters(self):
-        reader_names = ['HorizontalPassPackets', 'CoefNpyTxtReader', 'ImageX8Reader', 'TupleReader', 'ImageReader', 'ListFileReader']
+        reader_names = [ 'CoefNpyTxtReader', 'ImageX8Reader',
+            'TupleReader', 'ImageReader', 'ListFileReader',
+            'HorizontalPassPackets', 'Preview',
+            'Label', 'MulAdd', 'Pass', 'JPEG', 'Resize', 'CustomFunction',
+            'CentralCrop', 'Round']
         for name in reader_names:
             self.assertIn(name, FilterFactory.factories.keys())
 

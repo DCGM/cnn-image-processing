@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import math
 import copy
+import time
 
 from .. utils import decode_dct
 from .. utils import code_dct
@@ -20,11 +21,71 @@ from .. utils import code_dct
 
 from ..utilities import parameter, Configurable, ContinuePipeline, TerminatePipeline
 
-class Crop(object):
 
+class Buffer(Configurable):
     """
-    Center pivot cropper.
-    The center is is obtained as the floor divide op of size.
+    FIFO buffer with random selection.
+    Use in conjuction with HorizontalPassPackets to buffer
+    multiple pipeline streams.
+
+    Example:
+        HorizontalPassPackets: {pass_through: False}
+        HorizontalPassPackets: {pass_through: False}
+        Buffer: {size: 500, rng_seed: 24}
+    """
+
+    def addParams(self):
+        self.params.append(parameter(
+            'size', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='Size of the buffer'))
+        self.params.append(parameter(
+            'rng_seed', required=False, default=None,
+            parser=lambda x: max(int(x), 1),
+            help='Size of the buffer'))
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+        self.buffer = [None] * self.size
+        self.filled = 0
+        self.bufferHead = 0
+        if self.rng_seed:
+            self.rng = np.random.RandomState(self.rng_seed)
+        else:
+            self.rng = np.random.RandomState()
+
+    def add(self, packets):
+        self.buffer[self.bufferHead] = packets
+        self.filled = min(self.filled + 1, self.size)
+        self.bufferHead = (self.bufferHead + 1) % self.size
+
+    def getRandom(self):
+        if not self.filled:
+            self.log.warning('Empty packet buffer.')
+            raise ContinuePipeline
+        pos = self.rng.randint(self.filled)
+        return copy.copy(self.buffer[pos])
+
+    def __call__(self, packet, previous):
+        if packet:
+            packets = []
+            if 'packets' in previous:
+                packets.extend(previous['packets'])
+            packets.append(packet)
+            self.add(packets)
+
+        return self.getRandom()
+
+
+
+
+class Crop(Configurable):
+    """
+    Fixed region cropper.
+    The pivot is is obtained as the floor divide of size.
     Args:
         pivot: The coordinates of the pivot.
         size: The crop size
@@ -164,7 +225,6 @@ class MulAdd(Configurable):
 
 
 class JPGBlockReshape(object):
-
     """
     Resample the input packet's data into the u/8 * x/8 * 64 dim data
     """
@@ -423,39 +483,38 @@ class PadCoefMirror(object):
         return self.pad(packet)
 
 
-class JPEG(object):
-
+class JPEG(Configurable):
     '''
-    JPEG filter compress the input data with specified quality
+    JPEG encode and decode the input data with specified quality
+
+    Example:
+    JPEG: {quality: 20}
     '''
+    def addParams(self):
+        self.params.append(parameter(
+            'quality', required=False, default=20, parser=int,
+            help='JPEG qualilty. 100 for maximum quality; 1 for minimum quality.'))
 
-    def __init__(self, quality=20):
-        '''
-        JPEG constructor
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-        args:
-            quality: int
-                The JPEG compression quality
-        '''
-        self.qual = quality
-
-    def compress(self, packet):
+    def __call__(self, packet, previous):
         '''
         Compress the input packet's data with the jpeg encoder
         '''
         res, img_str = cv2.imencode('.jpeg', packet['data'],
-                                    [cv2.IMWRITE_JPEG_QUALITY, self.qual])
-        assert res is True
+                                    [cv2.IMWRITE_JPEG_QUALITY, self.quality])
+        if not res:
+            self.log.error('Failed to JPEG encode data.')
+            raise ContinuePipeline
+
         img = cv2.imdecode(np.asarray(bytearray(img_str), dtype=np.uint8),
                            cv2.IMREAD_UNCHANGED)
-        if len(img.shape) == 2:
-            img = img.reshape(img.shape[0], img.shape[1], 1)
-
-        packet['data'] = img
-        return packet
-
-    def __call__(self, packet):
-        return self.compress(packet)
+        packet['data'] = img.reshape(img.shape[0], img.shape[1], -1)
+        return [packet]
 
 
 class ShiftImg(object):
@@ -543,66 +602,127 @@ class ShiftImg(object):
     def __call__(self, packet, **kwargs):
         return self.shift(packet, **kwargs)
 
-class Resize(object):
 
+class Resize(Configurable):
     """
-    Resize image.
+    Resize image using cv2.INTER_AREA.
+
+    Examples:
+    Resize: {fixedSize=[100,100]}
+    Resize: {scale=0.5}
     """
+    def addParams(self):
+        self.params.append(parameter(
+            'fixedSize', required=False, default=None,
+            parser=lambda x: tuple([max(1, int(i)) for i in x[0:2]]),
+            help='Pair of integers [with, height].'))
+        self.params.append(parameter(
+            'scale', required=False, default=None,
+            parser=lambda x: max(0.0, float(x)),
+            help='Image scale.'))
 
-    def __init__(self, scale=0.5):
-        self.scaleFactor = scale
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-    def scale(self, packet):
-        """
-        Resize image by scale - using cv2.INTER_AREA
-        """
-        packet['data'] = cv2.resize(packet['data'], (0,0), fx=self.scaleFactor, fy=self.scaleFactor, interpolation=cv2.INTER_NEAREST)
+        if self.fixedSize is None and self.scale is None:
+            self.log.error('Either "scale" or "fixedSize" has to be specified.')
+            raise ValueError
+        if self.fixedSize is not None and self.scale is not None:
+            self.log.warning('Both "scale" and "fixedSize" can not be specified at the same time.')
+            raise ValueError
+
+    def __call__(self, packet, previous):
+        if self.scale:
+            packet['data'] = cv2.resize(packet['data'], (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_NEAREST)
+        else:
+            packet['data'] = cv2.resize(packet['data'], self.fixedSize, interpolation=cv2.INTER_AREA)
         shape = packet['data'].shape
-        packet['data'] = np.reshape( packet['data'], (shape[0], shape[1], -1))
-        return packet
-
-    def __call__(self, packet):
-        return self.scale(packet)
+        packet['data'] = np.reshape(packet['data'], (shape[0], shape[1], -1))
+        return [packet]
 
 
-class Round(object):
+class CustomFunction(Configurable):
+    """
+    Allows you to write a custom lambda function which is applied
+    to packet['data'] (which is most probably numpy array wiht dimensions
+    [height, width, channels]).
+    You can use numpy as np and OpenCV as cv2.
 
+    Example:
+    CustomFunction: {function: 'lambda x: (x / 10 + 15).astype(np.float32)' }
+    """
+    def addParams(self):
+        self.params.append(parameter(
+            'function', required=True, parser=str,
+            help='Lambda function that will be applied.'))
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+        self.op = eval(self.function)
+        if not callable(self.op):
+            self.log.error('The specified function has to be lambda function or something else callable.')
+            raise ValueError
+        import inspect
+        args = inspect.getargspec(self.op)
+        if len(args.args) != 1:
+            self.log.error('The specified function has to take only one argument.')
+            raise ValueError
+
+    def __call__(self, packet, previous):
+        packet['data'] = self.op(packet['data'])
+        previous['op'] = self.op
+        return [packet]
+
+
+class Round(Configurable):
     """
     Round values.
+
+    Example:
+    Round: {}
     """
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-    def __init__(self):
-        self.i = 1
-
-    def round(self, packet):
-        """
-        Subtract a val from from packet data
-        """
+    def __call__(self, packet, previous):
         packet['data'] = np.round(packet['data'])
-        return packet
+        return [packet]
 
-    def __call__(self, packet):
-        return self.round(packet)
-
-class FixedCrop(object):
-
+class CentralCrop(Configurable):
     """
     Crop center portion of the image.
+
+    Example:
+    CentralCrop: {size=10}
     """
+    def addParams(self):
+        self.params.append(parameter(
+            'size', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='Size of the croped region.'))
 
-    def __init__(self, size=10):
-        self.size = size
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-    def crop(self, packet):
-        """
-        Crop center portion of the image.
-        """
-        border = (int((packet['data'].shape[0]-self.size)/2), int((packet['data'].shape[1]-self.size)/2))
-        packet['data'] = packet['data'][ border[0]:border[0]+self.size, border[1]:border[1]+self.size]
+    def __call__(self, packet, previous):
+        border = (int((packet['data'].shape[0] - self.size) / 2),
+                  int((packet['data'].shape[1] - self.size) / 2))
+        packet['data'] = packet['data'][
+            border[0]:border[0] + self.size,
+            border[1]:border[1] + self.size]
         return packet
-
-    def __call__(self, packet):
-        return self.crop(packet)
 
 
 class TRandomCropper(object):
@@ -768,13 +888,17 @@ class ClipValues(object):
 class HorizontalPassPackets(Configurable):
     """
     Does nothing - only passes packets to filters in the same pipeline stage.
+    pass_through - if true, passes packets down the pipeline
 
     Example:
-    HorizontalPassPackets: {}
+    HorizontalPassPackets: {pass_through=True}
     """
 
     def addParams(self):
-        pass
+        self.params.append(parameter(
+            'pass_through', required=False, default=True,
+            parser=bool,
+            help='If true, passes packets down the pipeline.'))
 
     def __init__(self, config):
         Configurable.__init__(self)
@@ -786,4 +910,7 @@ class HorizontalPassPackets(Configurable):
         if 'packets' not in previous.keys():
             previous['packets'] = []
         previous['packets'].append(packet)
-        return [packet]
+        if self.pass_through:
+            return [packet]
+        else:
+            return []

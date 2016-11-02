@@ -16,4 +16,14 @@ FilterFactory.register('ListFileReader', readers.ListFileReader)
 FilterFactory.register('Preview', filters.Preview)
 FilterFactory.register('HorizontalPassPackets', filters.HorizontalPassPackets)
 
+FilterFactory.register('Label', filters.Label)
+FilterFactory.register('MulAdd', filters.MulAdd)
+FilterFactory.register('Pass', filters.Pass)
+FilterFactory.register('JPEG', filters.JPEG)
+FilterFactory.register('Resize', filters.Resize)
+FilterFactory.register('CustomFunction', filters.CustomFunction)
+FilterFactory.register('CentralCrop', filters.CentralCrop)
+FilterFactory.register('Round', filters.Round)
+
+
 #FilterFactory.print_registered_filters()
