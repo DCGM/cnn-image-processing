@@ -63,6 +63,8 @@ class OutQueueZMQ(Configurable):
         else:
             self.s.send_pyobj(packets)
 
+        return []
+
 
 class InQueueZMQ(Configurable):
     """
