@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import time
 import copy
 import numpy as np
 import unittest
@@ -9,8 +10,100 @@ from ..filters import filters
 from ..utilities import TerminatePipeline, ContinuePipeline
 from .. import FilterFactory
 from .. import utilities
+from ..filters import zmqQueues
+import timeout_decorator
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+
+class test_zmq_queues(unittest.TestCase):
+    @timeout_decorator.timeout(1)
+    def test_simple_packet(self):
+        inConfig = {'url': 'ipc://tst', 'bind': False}
+        outConfig = {'url': 'ipc://tst', 'bind': True}
+        inQueue = zmqQueues.InQueueZMQ(inConfig)
+        outQueue = zmqQueues.OutQueueZMQ(outConfig)
+        time.sleep(0.01)
+        packet = {'test': 'test'}
+        outQueue(packet, {})
+        packetsOut = inQueue(None, {})
+        self.assertIsInstance(packetsOut, list)
+        self.assertEqual(packet, packetsOut[0])
+
+    @timeout_decorator.timeout(1)
+    def test_reverse_bind(self):
+        inConfig = {'url': 'ipc://tst', 'bind': True}
+        outConfig = {'url': 'ipc://tst', 'bind': False}
+        inQueue = zmqQueues.InQueueZMQ(inConfig)
+        outQueue = zmqQueues.OutQueueZMQ(outConfig)
+        time.sleep(0.01)
+        packet = {'test': 'test'}
+        outQueue(packet, {})
+        packetsOut = inQueue(None, {})
+        self.assertIsInstance(packetsOut, list)
+        self.assertEqual(packet, packetsOut[0])
+
+    @timeout_decorator.timeout(5)
+    def test_matrix_sizes(self):
+        inConfig = {'url': 'ipc://tst', 'bind': True}
+        outConfig = {'url': 'ipc://tst', 'bind': False}
+        inQueue = zmqQueues.InQueueZMQ(inConfig)
+        outQueue = zmqQueues.OutQueueZMQ(outConfig)
+        time.sleep(0.01)
+        for i in [1,2,4,8,16,32,64,128,256,512,1024,2048,4096]:
+            packet = {'data': np.zeros((i,i))}
+            outQueue(packet, {})
+            packetsOut = inQueue(None, {})
+            self.assertIsInstance(packetsOut, list)
+            self.assertEqual(packet['data'].shape, packetsOut[0]['data'].shape)
+
+    @timeout_decorator.timeout(1)
+    def test_multiple_packets(self):
+        inConfig = {'url': 'ipc://tst', 'bind': True}
+        outConfig = {'url': 'ipc://tst', 'bind': False}
+        inQueue = zmqQueues.InQueueZMQ(inConfig)
+        outQueue = zmqQueues.OutQueueZMQ(outConfig)
+        time.sleep(0.01)
+        packets = [{'test': x} for x in range(10)]
+        outQueue(packets[-1], {'packets': packets[0:-1]})
+        packetsOut = inQueue(None, {})
+        self.assertIsInstance(packetsOut, list)
+        self.assertEqual(packets, packetsOut)
+
+    @timeout_decorator.timeout(1)
+    def test_non_block(self):
+        inConfig = {'url': 'ipc://tst', 'bind': True, 'blocking': False}
+        outConfig = {'url': 'ipc://tst', 'bind': False}
+        inQueue = zmqQueues.InQueueZMQ(inConfig)
+        outQueue = zmqQueues.OutQueueZMQ(outConfig)
+        packet = {'test': 'test'}
+        self.assertRaises(ContinuePipeline, inQueue, None, {})
+        outQueue(packet, {})
+        time.sleep(0.01)
+        packetsOut = inQueue(None, {})
+        packetsOut = inQueue(None, {})
+        self.assertIsInstance(packetsOut, list)
+        self.assertEqual([{}], [{}])
+
+    @timeout_decorator.timeout(1)
+    def test_skipp(self):
+        skipCount = 2
+        iterations = 4
+        inConfig = {'url': 'ipc://tst', 'bind': True, 'skip': skipCount}
+        outConfig = {'url': 'ipc://tst', 'bind': False}
+        inQueue = zmqQueues.InQueueZMQ(inConfig)
+        outQueue = zmqQueues.OutQueueZMQ(outConfig)
+        time.sleep(0.01)
+        packet = {'test': 'test'}
+        for i in range(iterations):
+            outQueue(packet, {})
+        for i in range(iterations):
+            packetsOut = inQueue(None, {})
+            self.assertEqual(packetsOut, [packet])
+            for j in range(skipCount):
+                packetsOut = inQueue(None, {})
+                self.assertEqual(packetsOut, [{}])
 
 
 class test_Buffer(unittest.TestCase):
@@ -40,7 +133,6 @@ class test_Buffer(unittest.TestCase):
         good = {}
         for i in range(iterations):
             packetsOut = filter_object(None, {})
-            print(packetsOut[0]['data'])
             good[packetsOut[0]['data']] = 1
         self.assertEqual(len(good), count)
 
@@ -58,9 +150,11 @@ class test_Buffer(unittest.TestCase):
         for i in range(iterations):
             packetsOut = filter_object(None, {})
             good[packetsOut[0]['data']] = 1
-        for packet in packets[count-size:]:
+
+        for packet in packets[count - size:]:
             self.assertIn(packet['data'], good)
-        for packet in packets[0:count-size]:
+
+        for packet in packets[0:count - size]:
             self.assertNotIn(packet['data'], good)
 
     def test_empty_read(self):
