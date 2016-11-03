@@ -20,7 +20,7 @@ class Process(multiprocessing.Process):
         Args:
           pipeline: pipeline of filters which is continuously called
         """
-        super(Provider, self).__init__()
+        super(Process, self).__init__()
         self.log = logging.getLogger(__name__ + "." + type(self).__name__)
         self.daemon = True  # Kill yourself if parent dies
         self.pipeline = pipeline
@@ -31,10 +31,10 @@ class Process(multiprocessing.Process):
         Run all filters in pipeline.
         """
         packets = [{}] * len(self.pipeline[0])
-        for layer in self.pipeline:
+        for stage_id, layer in enumerate(self.pipeline):
             previous = {}
             newPackets = []
-            for packet, pfilter in zip(packets, layer):
+            for filter_id, (packet, pfilter) in enumerate( zip(packets, layer)):
                 newPackets.extend(pfilter(packet, previous))
             packets = newPackets
 

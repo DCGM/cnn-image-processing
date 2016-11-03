@@ -29,7 +29,7 @@ class Creator(object):
             (fil_id, fil_params), = fil.items()
             if fil_params is None:
                 fil_params = {}
-            new_filter = cls.f_create(fil_id, fil_params)
+            new_filter = FilterFactory.create_object(fil_id, fil_params)
             new_filters.append(new_filter)
         return new_filters
 
