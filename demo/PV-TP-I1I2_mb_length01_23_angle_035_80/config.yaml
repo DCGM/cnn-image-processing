@@ -1,0 +1,21 @@
+
+Provider:
+    Parameters: {loop: True}
+    TFilters:
+    - TFilter:
+        Filters:
+        - CameraReader: {}
+    - TFilter:
+        Filters:
+        - Label: {name: data}
+    provider_queue_size: 1000
+    sample_queue_size: 1
+
+FCN:
+  batch_size: 1
+  patch_size: [300,300,3]
+  borders: [25,25]
+  in_blob: 'data'
+  out_blob: 'CONVX_15'
+  caffe_mode: 'gpu'
+  gpu_id: 0
