@@ -5,11 +5,13 @@ Filters
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import logging
 import cv2
 import numpy as np
 import math
 import copy
+import random
 
 from .. utils import decode_dct
 from .. utils import code_dct
@@ -452,7 +454,7 @@ class Preview(object):
 
         img = packet['data'] / self.norm + self.shift
         cv2.imshow(name, img)
-        cv2.waitKey(1000)
+        cv2.waitKey()
         return packet
 
     def __call__(self, packet):
@@ -612,29 +614,38 @@ class JPEG(object):
     JPEG filter compress the input data with specified quality
     '''
 
-    def __init__(self, quality=20):
+    def __init__(self, quality=20, min_quality=None, max_quality=None):
         '''
         JPEG constructor
 
         args:
             quality: int
                 The JPEG compression quality
+            min_quality: int
+                Minimum JPEG compression quality - random quality is sampled uniformly from [min,max]
+            max_quality: int
+                Minimum JPEG compression quality - random quality is sampled uniformly from [min,max]
         '''
         self.qual = quality
+        self.min_quality = min_quality
+        self.max_quality = max_quality
 
     def compress(self, packet):
         '''
         Compress the input packet's data with the jpeg encoder
         '''
+        quality = self.qual
+        if self.min_quality and self.max_quality:
+            quality = np.random.randint(low=self.min_quality, high=self.max_quality+1)
         res, img_str = cv2.imencode('.jpeg', packet['data'],
-                                    [cv2.IMWRITE_JPEG_QUALITY, self.qual])
+                                    [cv2.IMWRITE_JPEG_QUALITY, quality])
         assert res is True
         img = cv2.imdecode(np.asarray(bytearray(img_str), dtype=np.uint8),
                            cv2.IMREAD_UNCHANGED)
         if len(img.shape) == 2:
             img = img.reshape(img.shape[0], img.shape[1], 1)
 
-        packet['data'] = img
+        packet['data'] = img.astype(np.float32)
         return packet
 
     def __call__(self, packet):
@@ -732,20 +743,22 @@ class Resize(object):
     Resize image.
     """
 
-    def __init__(self, scale=0.5):
-        self.scaleFactor = scale
+    interpolation_strings = {"MAX": cv2.INTER_MAX, "AREA": cv2.INTER_AREA,
+        "CUBIC": cv2.INTER_CUBIC, "NEAREST": cv2.INTER_NEAREST,
+        "LANCZOS4": cv2.INTER_LANCZOS4, "LINEAR": cv2.INTER_LINEAR}
 
-    def scale(self, packet):
+    def __init__(self, scale=0.5, interpolation="AREA"):
+        self.scaleFactor = scale
+        self.interpolations = [self.interpolation_strings[s] for s in interpolation.split(',')]
+
+    def __call__(self, packet):
         """
         Resize image by scale - using cv2.INTER_AREA
         """
-        packet['data'] = cv2.resize(packet['data'], (0,0), fx=self.scaleFactor, fy=self.scaleFactor, interpolation=cv2.INTER_NEAREST)
+        packet['data'] = cv2.resize(packet['data'], (0,0), fx=self.scaleFactor, fy=self.scaleFactor, interpolation=random.choice(self.interpolations))
         shape = packet['data'].shape
         packet['data'] = np.reshape( packet['data'], (shape[0], shape[1], -1))
         return packet
-
-    def __call__(self, packet):
-        return self.scale(packet)
 
 
 class Round(object):
@@ -757,15 +770,12 @@ class Round(object):
     def __init__(self):
         self.i = 1
 
-    def round(self, packet):
+    def __call__(self, packet):
         """
         Subtract a val from from packet data
         """
         packet['data'] = np.round(packet['data'])
         return packet
-
-    def __call__(self, packet):
-        return self.round(packet)
 
 class FixedCrop(object):
 
@@ -776,16 +786,13 @@ class FixedCrop(object):
     def __init__(self, size=10):
         self.size = size
 
-    def crop(self, packet):
+    def __call__(self, packet):
         """
         Crop center portion of the image.
         """
         border = (int((packet['data'].shape[0]-self.size)/2), int((packet['data'].shape[1]-self.size)/2))
         packet['data'] = packet['data'][ border[0]:border[0]+self.size, border[1]:border[1]+self.size]
         return packet
-
-    def __call__(self, packet):
-        return self.crop(packet)
 
 
 class TRandomCropper(object):
@@ -871,6 +878,7 @@ class Noise(object):
 class ColorBalance(object):
     def __init__(self, color_sdev):
         self.color_sdev = color_sdev
+
     def __call__(self, packet):
         img = packet['data']
         colorCoeff = [2**(np.random.standard_normal()*self.color_sdev) for x in range(img.shape[2])]
@@ -895,6 +903,7 @@ class ReduceContrast(object):
         packet['data'] = packet['data']/255.0 * (maxVal-minVal) + minVal
         return packet
 
+
 class GammaCorrection(object):
     """
     Runs the image throug gamma correction:
@@ -906,9 +915,10 @@ class GammaCorrection(object):
         self.gamma_sdev = gamma_sdev
 
     def __call__(self, packet):
-        gamma = 2**(np.random.standard_normal()*self.gamma_sdev)
-        packet['data'] = (packet['data'].copy().astype(np.float32)**gamma) / (255**gamma) * 255
+        gamma = max(0.1, 2**(np.random.standard_normal()*self.gamma_sdev))
+        packet['data'] = (np.maximum(packet['data'].astype(np.float32), 2) **gamma) / (255**gamma) * 255
         return packet
+
 
 class Flip(object):
     """

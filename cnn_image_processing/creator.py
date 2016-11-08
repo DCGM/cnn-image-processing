@@ -11,6 +11,7 @@ from .provider import Provider
 from .sampler import Sampler
 from .trainer import Trainer
 from .fcn import FCN
+from .classifier import Classifier
 
 
 class Creator(object):
@@ -71,7 +72,10 @@ class Creator(object):
         """
         Creates sampler
         """
-        tuple_filters = cls.parse_tuples(config['TFilters'])
+        if config['TFilters']:
+            tuple_filters = cls.parse_tuples(config['TFilters'])
+        else:
+            tuple_filters = []
         parameters = config['Parameters']
         return Sampler(t_filters=tuple_filters, **parameters)
 
@@ -83,9 +87,15 @@ class Creator(object):
         return Trainer(**config)
 
     @classmethod
-    def create_fcn(cls, config):
+    def create_fcn(cls, config, out_queue):
         """
         Creates the trainer.
         """
-        return FCN(**config)
+        return FCN(out_queue=out_queue, **config)
 
+    @classmethod
+    def create_class(cls, config):
+        """
+        Creates the trainer.
+        """
+        return Classifier(**config)

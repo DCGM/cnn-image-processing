@@ -49,7 +49,8 @@ class ObjectFactory(object):
                  'VirtualCamera': filters.VirtualCamera,
                  'Flip': filters.Flip,
                  'Copy': filters.Copy,
-                 'ClipValues': filters.ClipValues
+                 'ClipValues': filters.ClipValues,
+                 'CameraReader': filters.CameraReader
                  }
 
     @classmethod

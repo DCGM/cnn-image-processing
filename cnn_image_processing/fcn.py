@@ -22,7 +22,7 @@ class FCN(multiprocessing.Process):
     layers). Compose the FCN packet data result an write it to png file.
     """
 
-    def __init__(self, in_queue=None, deploy=None, caffe_weights=None,
+    def __init__(self, out_queue, in_queue=None, deploy=None, caffe_weights=None,
                  in_blob=None, patch_size=None, batch_size=1, out_blob=None,
                  borders=None, path=None, caffe_mode=None, gpu_id=0):
         super(FCN, self).__init__()
@@ -42,6 +42,7 @@ class FCN(multiprocessing.Process):
         self.out_shape = None
         self.cnn_shape = None
         self.out_scale = None
+        self.out_queue = out_queue
         # self.timeout = 20
 
     def init_caffe(self):
@@ -259,10 +260,11 @@ class FCN(multiprocessing.Process):
         while len(packets) > 0:
             packet = packets.pop(0)
             img = packet['fcn_data']
-            img_name = os.path.basename(packet['path'])
-            write_image_name = "{}_fcn.png".format(img_name)
-            self.writer(write_image_name, img)
-            self.log.info("Written: {}".format(write_image_name))
+            #img_name = os.path.basename(packet['path'])
+            #write_image_name = "{}_fcn.png".format(img_name)
+            #self.writer(write_image_name, img)
+            #self.log.info("Written: {}".format(write_image_name))
+            self.out_queue.put((img, packet['data']))
 
     def run(self):
         """

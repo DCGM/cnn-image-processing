@@ -137,6 +137,10 @@ class Trainer(multiprocessing.Process):
             if i_batch < self.batch_size:
                 for packet in packets:
                     key = packet['label']
+
+                    #if packet['data'].shape[2] == 3:
+                    #    cv2.imshow('examples', cv2.resize(packet['data']+0.5, (200,200))
+                    #    cv2.waitKey()
                     packet_data = packet['data'].transpose(
                         [2, 0, 1])  # [z y x]
                     net.blobs[key].data[i_batch][...] = packet_data

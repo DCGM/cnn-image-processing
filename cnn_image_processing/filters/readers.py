@@ -51,6 +51,52 @@ class ImageReader(object):
         """
         return self.read(path)
 
+class CameraReader(object):
+    """
+    Read images from camera
+    """
+
+    def __init__(self, grayscale=bool, crop_size=250):
+        self.load_flag = cv2.IMREAD_GRAYSCALE if grayscale\
+            else cv2.IMREAD_COLOR
+        self.capture = cv2.VideoCapture(0)
+        self.cropSize = crop_size
+        self.log = logging.getLogger(__name__ + ".CameraReader")
+
+    def read(self, packet):
+        """
+        Loads and returns the image of path.
+        """
+        ret, frame = self.capture.read()
+        if not ret:
+            self.log.error("Could not read image fom camera.")
+            exit(-1)
+        img = frame
+
+        b = ((img.shape[0]-self.cropSize)/2, (img.shape[1]-self.cropSize)/2)
+        img = img[b[0]:b[0]+self.cropSize, b[1]:b[1]+self.cropSize,:]
+        #cv2.imshow('in', cv2.resize(img, (0,0), fx=3, fy=3))
+
+
+        img[:,:,:] = np.expand_dims(cv2.cvtColor(src=img, code=cv2.COLOR_BGR2GRAY), axis=2)
+        img = img.astype(np.float32)
+        #img /= img.max()
+        #img -= img.min() + 0.1
+        img /= 255
+        img -= 0.5
+        #cv2.waitKey(5)
+        img = img.astype(np.float32)
+        if len(img.shape) == 2:
+            img = img.reshape(img.shape[0], img.shape[1], 1)
+        packet['data'] = img
+        return packet
+
+    def __call__(self, path):
+        """
+        Returns the image
+        """
+        return self.read(path)
+
 class TupleReader(object):
 
     """
