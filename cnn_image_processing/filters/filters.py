@@ -11,13 +11,10 @@ import numpy as np
 import math
 import copy
 import time
+import functools
 
 from .. utils import decode_dct
 from .. utils import code_dct
-
-# __all__ = ["TFilter", "TCropCoef8ImgFilter", "Crop", "LTCrop", "Label", "Mul",
-#            "Div", "Add", "Sub", "JPGBlockReshape", "MullQuantTable", "Pass",
-#            "Preview", "DecodeDCT", "CodeDCT", "Pad8", "PadCoefMirror"]
 
 from ..utilities import parameter, Configurable, ContinuePipeline, TerminatePipeline
 
@@ -65,9 +62,10 @@ class Buffer(Configurable):
     def getRandom(self):
         if not self.filled:
             self.log.warning('Empty packet buffer.')
+        if self.filled != self.size:
             raise ContinuePipeline
         pos = self.rng.randint(self.filled)
-        return copy.copy(self.buffer[pos])
+        return [copy.copy(x) for x in self.buffer[pos]]
 
     def __call__(self, packet, previous):
         if packet:
@@ -80,7 +78,67 @@ class Buffer(Configurable):
         return self.getRandom()
 
 
+class RandomCrop(Configurable):
+    """
+    Random region cropper.
+    Args:
+        width: The crop with
+        height: The crop height
+        rng_seed: 24
+    """
 
+    def addParams(self):
+        self.params.append(parameter(
+            'width', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='he crop with'))
+        self.params.append(parameter(
+            'height', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='The crop height'))
+        self.params.append(parameter(
+            'rng_seed', required=False, default=None,
+            parser=lambda x: max(int(x), 1),
+            help='Size of the buffer'))
+
+    @staticmethod
+    def cropImage(img, pos, size):
+        if pos[0] + size[0] >= img.shape[0] or pos[1] + size[1] >= img.shape[1]:
+            raise AttributeError('Crop does not fit.')
+
+        return img[
+            pos[0]:pos[0]+size[0],
+            pos[1]:pos[1]+size[1], :]
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+        if self.rng_seed:
+            self.rng = np.random.RandomState(self.rng_seed)
+        else:
+            self.rng = np.random.RandomState()
+        self.size = (self.height, self.width)
+
+    def __call__(self, packet, previous):
+        img = packet['data']
+        max0 = img.shape[0] - self.height
+        max1 = img.shape[1] - self.width
+        if max0 < 1 or max1 < 1:
+            msg = ' Image is too small ({},{}) to crop ({},{}).'.format(
+                img.shape[1], img.shape[0], self.width, self.height)
+            self.log.warning(msg)
+            raise ContinuePipeline
+
+        pos = (self.rng.randint(max0), self.rng.randint(max1))
+        previous['op'] = functools.partial(
+            RandomCrop.cropImage,
+            pos=pos, size=self.size)
+
+        packet['data'] = RandomCrop.cropImage(img, pos=pos, size=self.size)
+
+        return [packet]
 
 class Crop(Configurable):
     """
@@ -129,51 +187,24 @@ class Crop(Configurable):
     def __call__(self, packet=None, pivot=None, size=None):
         return self.crop(packet=packet, pivot=pivot, size=size)
 
-
-class LTCrop(object):
-
+class Img2Blob(Configurable):
     """
-    Left top pivot cropper.
-    Args:
-        pivot: The coordinates of the pivot.
-        size: The crop size
-        scale: Scale factor of the pivot position and crop size, default 1.
+    Transform image to caffe blob.
+
+    Example:
+    Img2Blob: {}
     """
 
-    def __init__(self, scale=1):
-        """
-        Contructs the LTCrop - Left Top pivot Crop
-        Args:
-            scale: The scale factor the pivot and size is multiplied with.
-                   Default = 1
-        """
-        self.scale = scale
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-    def crop(self, packet=None, pivot=None, size=None):
-        """
-        Crop the data with the top left pivot and size. The pivot position
-        and size may be scaled by the scale factor.
-        Args:
-            data: Input to be cropped.
-                numpy array
-            pivot: (x,y) of the pivot.
-                numpy array
-            size: Size of the crop.
-                int
-
-        """
-        p_y, p_x = pivot * self.scale
-        size_y, size_x = size * self.scale
-
-        out_packet = {key: val for key, val in packet.items() if key != 'data'}
-        out_packet['data'] = packet['data'][p_y:p_y + size_y, p_x:p_x + size_x]
-        out_packet['pivot'] = [p_y, p_x]
-
-        return out_packet
-
-    def __call__(self, packet=None, pivot=None, size=None):
-        return self.crop(packet=packet, pivot=pivot, size=size)
-
+    def __call__(self, packet, previous):
+        blob = packet['data'].transpose(2, 0, 1)
+        packet['data'] = np.expand_dims(blob, axis=0)
+        return [packet]
 
 class Label(Configurable):
     """
@@ -216,7 +247,7 @@ class MulAdd(Configurable):
         self.log = logging.getLogger(__name__ + "." + type(self).__name__)
         self.addParams()
         self.parseParams(config)
-        self.operation = lambda x: x * self.mul + self.add
+        self.operation = lambda x: (x + self.add) * self.mul
 
     def __call__(self, packet, previous):
         packet['data'] = self.operation(packet['data'])
@@ -302,7 +333,7 @@ class Preview(Configurable):
     Try to preview the packet's data as the image via OpenCV
 
     Example:
-    Preview: {norm=1, shift=0, name='Data'}
+    Preview: {norm: 1, shift: 0, name: 'Data'}
     """
 
     def addParams(self):
@@ -330,8 +361,10 @@ class Preview(Configurable):
         if name is None and 'label' in packet:
             name = packet['label']
         img = packet['data'] / self.norm + self.shift
+        if 'path' in packet:
+            self.log.info(packet['path'])
         cv2.imshow(name, img)
-        cv2.waitKey(1)
+        cv2.waitKey(2)
 
         return [packet]
 
@@ -680,6 +713,31 @@ class CustomFunction(Configurable):
         return [packet]
 
 
+class RepeatOperation(Configurable):
+    """
+    Repeates operation.
+    One of the previous filters in a pipeline stage has to set
+    previous['op'].
+
+    Example:
+    RepeatOperation:
+    """
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+
+    def __call__(self, packet, previous):
+        if 'op' not in previous:
+            self.log.error(' Previous filters did not set the operation to perform.')
+            raise TerminatePipeline
+
+        packet['data'] = previous['op'](packet['data'])
+        return [packet]
+
+
 class Round(Configurable):
     """
     Round values.
@@ -722,7 +780,7 @@ class CentralCrop(Configurable):
         packet['data'] = packet['data'][
             border[0]:border[0] + self.size,
             border[1]:border[1] + self.size]
-        return packet
+        return [packet]
 
 
 class TRandomCropper(object):
@@ -885,13 +943,15 @@ class ClipValues(object):
         return packet
 
 
+
+
 class HorizontalPassPackets(Configurable):
     """
     Does nothing - only passes packets to filters in the same pipeline stage.
     pass_through - if true, passes packets down the pipeline
 
     Example:
-    HorizontalPassPackets: {pass_through=True}
+    HorizontalPassPackets: {pass_through: True}
     """
 
     def addParams(self):
@@ -914,3 +974,27 @@ class HorizontalPassPackets(Configurable):
             return [packet]
         else:
             return []
+
+class Pause(Configurable):
+    """
+    Sleep for a specified time and passes data through.
+
+    Example:
+    Pause: {time: 0.5}
+    """
+
+    def addParams(self):
+        self.params.append(parameter(
+            'time', required=False, default=1,
+            parser=float,
+            help='Time in seconds.'))
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+
+    def __call__(self, packet, previous):
+        time.sleep(self.time)
+        return [packet]

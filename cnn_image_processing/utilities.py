@@ -68,6 +68,8 @@ class Configurable(object):
         self.params = []
         self.log = logging.getLogger(__name__ + "." + type(self).__name__)
 
+    def init(self):
+	pass
     def addParams(self):
         pass
 

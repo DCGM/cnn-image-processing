@@ -33,20 +33,22 @@ class test_Creator(unittest.TestCase):
 
 
 class test_Process(unittest.TestCase):
-    @timeout_decorator.timeout(1)
+    @timeout_decorator.timeout(2)
     def test_simple_pipeline(self):
-        inConfig = {'url': 'ipc://pipeline_tst', 'bind': False, 'blocking': False}
+        inConfig = {'url': 'ipc://./pipeline_tst', 'bind': False, 'blocking': False}
         inQueue = zmqQueues.InQueueZMQ(inConfig)
+        inQueue.init()
 
         pipeline = [
             [{'ListFileReader':
                 {'file_name': os.path.join(THIS_DIR, 'images/data.list'), 'loop': False}}],
             [{'TupleReader': {}}, {'TupleReader': {}}],
             [{'HorizontalPassPackets': {}},
-                {'OutQueueZMQ': {'url': 'ipc://pipeline_tst', 'bind': True}}]
+                {'OutQueueZMQ': {'url': 'ipc://./pipeline_tst', 'bind': True}}]
         ]
+        config = {'name': 'test', 'pipeline': pipeline}
         pipeline = Creator.parse_pipeline(pipeline)
-        process = Process(pipeline, name='test')
+        process = Process(config)
         self.assertEqual(process.name, 'test')
         process.run()
         time.sleep(0.01)

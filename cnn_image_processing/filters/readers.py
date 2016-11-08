@@ -8,7 +8,6 @@ import numpy as np
 from ..utilities import parameter, Configurable, ContinuePipeline, TerminatePipeline
 
 class ListFileReader(Configurable):
-
     """
     Reads a file and parses lines into white-space separated items.
     It should be used as the first filter in image reading pipelines.

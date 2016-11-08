@@ -99,3 +99,18 @@ class Creator(object):
         Creates the trainer.
         """
         return Classifier(**config)
+
+    def parse_config(conf):
+        """
+        Parse the YAML config.
+        """
+        processes = []
+        for c in conf:
+            processName = c.keys(0)
+            processConfig = c.values(0)
+
+
+
+
+    return app
+

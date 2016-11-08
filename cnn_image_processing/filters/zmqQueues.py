@@ -22,7 +22,7 @@ class OutQueueZMQ(Configurable):
             'url', required=True,
             parser=str, help='The queue address (e.g. ipc://images, tcp://1.2.3.4:5012)'))
         self.params.append(parameter(
-            'bind', required=False, default=False,
+            'bind', required=False, default=True,
             parser=bool,
             help='Should this end bind? Only one que should bind the an URL.'))
 
@@ -32,12 +32,16 @@ class OutQueueZMQ(Configurable):
         self.addParams()
         self.parseParams(config)
         self.skipped = 0
-        self.ctx = zmq.Context.instance()
+
+    def init(self):
+        self.ctx = zmq.Context()
         self.s = self.ctx.socket(zmq.PUSH)
         self.s.set_hwm(40)
         if self.bind:
+            self.log.info(' {} BIND'.format(self.url))
             self.s.bind(self.url)
         else:
+            self.log.info(' {} CONNECT'.format(self.url))
             self.s.connect(self.url)
 
     def __call__(self, packet, previous):
@@ -63,7 +67,7 @@ class OutQueueZMQ(Configurable):
         else:
             self.s.send_pyobj(packets)
 
-        return []
+        return packets
 
 
 class InQueueZMQ(Configurable):
@@ -97,8 +101,9 @@ class InQueueZMQ(Configurable):
         self.addParams()
         self.parseParams(config)
 
+    def init(self):
         self.skipped = self.skip
-        self.ctx = zmq.Context.instance()
+        self.ctx = zmq.Context()
         self.s = self.ctx.socket(zmq.PULL)
         self.s.set_hwm(40)
         self.packetCount = 0
@@ -107,14 +112,17 @@ class InQueueZMQ(Configurable):
             self.flags = zmq.NOBLOCK
 
         if self.bind:
+            self.log.info(' {} BIND'.format(self.url))
             self.s.bind(self.url)
         else:
+            self.log.info(' {} CONNECT'.format(self.url))
             self.s.connect(self.url)
 
     def __call__(self, packet, previous):
         if self.skipped >= self.skip:
             try:
                 msg = self.s.recv_multipart(copy=False, flags=self.flags)
+
                 packets = pickle.loads(str(msg[0]))
                 msg = msg[1:]
                 for packet in packets:
@@ -123,6 +131,7 @@ class InQueueZMQ(Configurable):
                         data = np.frombuffer(msg[1], dtype=header[0])
                         packet['data'] = data.reshape(header[1])
                         msg = msg[2:]
+
                 self.skipped = 0
                 self.packetCount = len(packets)
                 return packets

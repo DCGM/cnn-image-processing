@@ -11,61 +11,155 @@ import logging
 import time
 import numpy as np
 import cv2
+from collections import defaultdict
+import timeout_decorator
+import Queue
+import threading
+
 import caffe
 
+from .factory import FilterFactory
 from .utils import RoundBuffer
+from .utilities import parameter, Configurable
 
 
-class Trainer(multiprocessing.Process):
+def fill_net_input(net, data):
+    for inputName in data:
+        packet_data = data[inputName]
+        net.blobs[inputName].data[...] = packet_data
 
+def fetch_batch(inQueue, batchSize):
+    data = defaultdict(list)
+    for i in range(batchSize):
+        packets = inQueue({}, {})
+        #print(packets)
+        for packet in packets:
+            data[packet['label']].append(packet['data'])
+    for key in data:
+        data[key] = np.concatenate(data[key])
+
+    return data
+
+
+def set_shapes(net, batch):
     """
-    Trainer call the caffe solver - train and prepare the input
-    cnn input batches.
+    Set the inputlayer shape according the data shape
     """
+    for key, data in batch.items():
+        net.blobs[key].reshape(*data.shape)
+    net.reshape()
 
-    def __init__(self, train_in_queue=None, test_in_queue=None,
-                 solver_file=None, batch_size=64, max_iter=100,
-                 test_iter=100, test_interval=2500,
-                 caffe_weights=None, caffe_solverstate=None, caffe_mode=None,
-                 stat_interval=100,
-                 gpu_id=0,
-                 buffer_size=256):
-        """
-        Trainer constructor
-        Args:
-          train_in_queue: The queue the train data are read from.
-          test_in_queue: The list of queues the test data are read from.
-          solver: initialized Caffe solver.
-          batch_size: Size of the train batch data.
-          max_iter: number of train iterations.
-          test_iter: number of test iterations
-          test_interval: interval how often to test the network
-          caffe_weights: Weights to load.
-          caffe_solverstate: Solverstate to restore.
-          caffe_mode: Set the CPU or GPU caffe mode.
-          stat_interval: interval to compute net layer activations stats
-          gpu_id: The gpu id on a multi gpu system.
-          buffer_size: Size of the internal buffer - used with threads.
-        """
-        super(Trainer, self).__init__()
-        self.daemon = True  # Kill yourself if parent dies
-        self.train_in_queue = train_in_queue
-        self.test_in_queue = test_in_queue
-        self.solver_file = solver_file
-        self.batch_size = batch_size
-        self.max_iter = max_iter
-        self.test_iter = test_iter
-        self.test_interval = test_interval
-        self.caffe_weights = caffe_weights
-        self.caffe_solverstate = caffe_solverstate
-        self.caffe_mode = "GPU" if caffe_mode is None else caffe_mode
-        self.stat_interval = stat_interval
-        self.gpu_id = gpu_id
-        self.buffer = Queue.Queue(buffer_size)
+
+class Tester(Configurable):
+    def addParams(self):
+        self.params.append(parameter(
+            'name', required=True,
+            parser=str,
+            help='Name of the test.'))
+        self.params.append(parameter(
+            'batch_size', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='Size of data batches.'))
+        self.params.append(parameter(
+            'iterations', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='Number of iterations in each test pass.'))
+        self.params.append(parameter(
+            'data_queue', required=True,
+            parser=lambda x: x,
+            help='Queue from which data should be read.'))
+
+    def __init__(self, config):
+        super(Tester, self).__init__()
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+        try:
+            self.queue = FilterFactory.create_object(
+                self.data_queue.keys()[0],
+                self.data_queue.values()[0])
+            self.queue.init()
+        except Exception as ex:
+            self.log.error(
+                'Unable to create input queue in test "{}"'.format(self.name))
+            self.log.error(ex)
+            exit(-1)
+
+    def set_net(self, net):
+        self.net = net
+        self.batch = fetch_batch(self.data_queue, self.batch_size)
+
+    def test(self):
+        set_shapes(net, self.batch)
+        for i in range(self.iterations):
+            data = fetch_batch(self.data_queue, self.batch_size)
+            fill_net_input(self.net, data)
+            net.forward()
+
+
+class Trainer(Configurable, multiprocessing.Process):
+    def addParams(self):
+        self.params.append(parameter(
+            'batch_size', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='Size of training and testing minibatches.'))
+        self.params.append(parameter(
+            'max_iter', required=False, default=100000,
+            parser=lambda x: max(int(x), 1),
+            help='Maximum number of training iterations'))
+        self.params.append(parameter(
+            'use_gpu', required=False, default=True,
+            parser=bool,
+            help='Should GPU be used?'))
+        self.params.append(parameter(
+            'gpu_id', required=False, default=0,
+            parser=lambda x: max(int(x), 0),
+            help='GPU which should be used.'))
+        self.params.append(parameter(
+            'caffe_solver_file', required=True,
+            help='Caffe solver configuration.'))
+        self.params.append(parameter(
+            'caffe_solverstate', required=False,
+            help='Caffe solverstate from which should training continue.'))
+        self.params.append(parameter(
+            'caffe_weights', required=False,
+            help='Caffe model file used to initialize weights.'))
+        self.params.append(parameter(
+            'test_interval', required=False, default=1000,
+            parser=lambda x: max(int(x), 1),
+            help='How often should tests be run?'))
+        self.params.append(parameter(
+            'stat_interval', required=False, default=100,
+            parser=lambda x: max(int(x), 1),
+            help='How often should network statistics be computed.'))
+        self.params.append(parameter(
+            'train_data', required=True,
+            parser=lambda x: x,
+            help='Queue from which data should be read.'))
+        self.params.append(parameter(
+            'tests', required=False, default=[],
+            parser=lambda x: x,
+            help='List of test specifications.'))
+
+    def __init__(self, config):
+        multiprocessing.Process.__init__(self)
+        Configurable.__init__(self)
+        #super(Trainer, self).__init__()
+        self.daemon = True
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
         self.stat = None
-        self.log = logging.getLogger(__name__ + ".Trainer")
-        self.queue_timeout = 250  # timeout wait queue 25 seconds
+
+        self.testers = []
+        for test in self.tests:
+            self.testers.append(Tester(test))
+
+        self.train_in_queue = FilterFactory.create_object(
+            self.train_data.keys()[0], self.train_data.values()[0])
+        self.train_in_queue.init()
+        self.batchQueue = Queue.Queue(maxsize=2)
 
     def center_initialization(self, net, step=1):
         """
@@ -78,77 +172,106 @@ class Trainer(multiprocessing.Process):
                 # pylint: disable=E1101
                 average = average.reshape((-1, 1, 1, 1))
                 params.data[...] = params.data - (average * step)
-
-        self.log.info("Net - centering the parameters.")
+        self.log.info("Net - centered parameters.")
 
     def init_caffe(self, solver_file):
         """
         Initialize the caffe solver.
         """
-        if self.caffe_mode.lower() == "gpu":
+        if self.use_gpu:
+            self.log.info(" Using GPU id {}".format(self.gpu_id))
             caffe.set_device(self.gpu_id)
             caffe.set_mode_gpu()
         else:
+            self.log.info(" Using CPU")
             caffe.set_mode_cpu()
-        self.log.info(" Solver file: %s", solver_file)
+
+        self.log.info(" Reading solver file: %s", solver_file)
         solver = caffe.get_solver(solver_file)
 
-        if self.caffe_solverstate is not None:
+        if self.caffe_solverstate:
+            self.log.info(" Loading solver state: {}".format(self.caffe_solverstate))
             solver.restore(self.caffe_solverstate)
-            self.log.info(" Loaded solverstate: %s", self.caffe_solverstate)
-        elif self.caffe_weights is not None:
+        elif self.caffe_weights:
+            self.log.info(" Loading weights: %s", self.caffe_weights)
             solver.net.copy_from(self.caffe_weights)
-            self.log.info(" Loaded weights: %s", self.caffe_weights)
         else:
+            self.log.info(" Centering network parameters.")
             self.center_initialization(solver.net)
-
         return solver
 
-    def get_shapes(self, queue):
+    def train(self, solver):
         """
-        Get the input data shape
+        Run one solver step
         """
-        in_packets = queue.get(block=True, timeout=self.queue_timeout)
-        dict_shapes = {}
-        for packet in in_packets:
-            label = packet['label']
-            dim = packet['data'].shape
-            blob_shape = [self.batch_size, dim[2], dim[0], dim[1]]
-            dict_shapes[label] = blob_shape
+        time1 = time.clock()
+        data = self.batchQueue.get()
+        time2 = time.clock()
+        fill_net_input(solver.net, data)
 
-        return dict_shapes
+        time3 = time.clock()
+        solver.step(1)
+        time4 = time.clock()
+        self.log.debug(" Train time (fetch, fill, step): {:f} {:f} {:f} {:f}".format(time2-time1, time3-time2, time4-time3, time4-time1))
 
-    def set_shapes(self, net, shapes):
+    def fetchThread(self):
+        while True:
+            data = fetch_batch(self.train_in_queue, self.batch_size)
+            self.batchQueue.put(data)
+
+
+    def run(self):
         """
-        Set the inputlayer shape according the data shape
+        Run the training
         """
-        for key, shape in shapes.items():
-            net.blobs[key].reshape(*shape)
 
-        net.reshape()
+        self.log.info(' Initializing caffe')
+        solver = self.init_caffe(self.caffe_solver_file)
+        self.log.info(' Reading initial batch from training data queue.')
+        batch = fetch_batch(self.train_in_queue, self.batch_size)
+        for name in batch:
+            self.log.info(' Training input layer shape: {} - {}'.format(
+                name, batch[name].shape))
+        self.log.info(' Resizing training network.')
+        set_shapes(solver.net, batch)
 
-    def fetch_batch(self, queue, net):
-        """
-        Fetch input with data from queue of n = self.batch_size data
-        """
-        i_batch = 0
-        start_fetch = time.clock()
-        for packets in iter(queue.get, None):
-            if i_batch < self.batch_size:
-                for packet in packets:
-                    key = packet['label']
-                    packet_data = packet['data'].transpose(
-                        [2, 0, 1])  # [z y x]
-                    net.blobs[key].data[i_batch][...] = packet_data
+        self.log.info(' Setting up test networks.')
+        for testId, tester in enumerate(self.testers):
+            tester.set_net(solver.test_nets[testId])
 
-                i_batch += 1
-            else:
-                break
+        self.log.info(' Setting up network statistics collector.')
+        self.stat = ActivationStat(solver.net)
 
-        stop_fetch = time.clock()
-        self.log.debug(" Fetch data time: %f", stop_fetch - start_fetch)
+        self.log.info(' Starting data fetching thread.')
 
-        return True if i_batch == self.batch_size else False
+        self.fetchThreadObj = threading.Thread(target=self.fetchThread,)
+        self.fetchThreadObj.setDaemon(True)
+        self.fetchThreadObj.start()
+
+        self.log.info(' Running training.')
+        while solver.iter < self.max_iter:
+            # Training
+            start_time = time.clock()
+            self.train(solver)
+            self.log.debug(
+                "Train Iteration time: {}".format(time.clock() - start_time))
+
+            # Testing
+            if solver.iter % self.test_interval == 0:
+                for tester in self.testers:
+                    start_time = time.clock()
+                    tester.test()
+                    self.log.debug(" Test Iteration time: {}".format(
+                        time.clock() - start_time))
+
+            # Print and save stats
+            if solver.iter % self.stat_interval == 0:
+                self.stat.add_history(solver.net)
+                self.stat.print_stats()
+
+            self.log.debug(" Iteration: %i", solver.iter)
+
+        self.log.info(" Training DONE.")
 
     def test(self, net, in_queue):
         """
@@ -162,149 +285,14 @@ class Trainer(multiprocessing.Process):
         self.log.info(" End phase Test.")
         return fetch_flag
 
-    def train(self, solver):
-        """
-        Run one solver step
-        """
-        # ToDo fix the run even zero data is fetched
-        fetch_flag = self.fetch_batch(self.train_in_queue, solver.net)
-
-        start_train = time.clock()
-        solver.step(1)
-        stop_train = time.clock()
-
-        self.log.debug(" Train time: %f", stop_train - start_train)
-        return fetch_flag
-
-    def run(self):
-        """
-        Run the training
-        """
-        # Get the first packet from queues - shapes of data
-        try:
-            train_shapes = self.get_shapes(self.train_in_queue)
-        except Empty:
-            self.log.error("Train input queue is empty.")
-            return None
-
-        # Initialize the caffe solver
-        solver = self.init_caffe(self.solver_file)
-        self.set_shapes(solver.net, train_shapes)
-
-        if self.test_in_queue is not None:
-            assert len(self.test_in_queue) == len(solver.test_nets)
-            try:
-                for i_test in range(len(self.test_in_queue)):
-                    test_shapes = self.get_shapes(self.test_in_queue[i_test])
-                    self.set_shapes(solver.test_nets[i_test], test_shapes)
-            except Empty:
-                self.log.error("Test input queue is empty.")
-                return None
-
-        self.stat = ActivationStat(solver.net)
-
-        train_flag = True
-        while train_flag:
-            # Training
-            start_iteration_tr = time.clock()
-            train_flag = self.train(solver)
-            stop_iteration_tr = time.clock()
-            self.log.debug("Train Iteration time: %f",
-                           stop_iteration_tr - start_iteration_tr)
-
-            # Testing
-            if(self.test_in_queue is not None and
-               solver.iter % self.test_interval == 0):
-                for i_test in range(len(self.test_in_queue)):
-                    start_iteration_te = time.clock()
-                    self.test(solver.test_nets[i_test],
-                              self.test_in_queue[i_test])
-                    stop_iteration_te = time.clock()
-                    dbg_msg = " Test Iteration time: {}".format(
-                        stop_iteration_te - start_iteration_te)
-                    self.log.debug(dbg_msg)
-            # Print & save stats
-            if solver.iter % self.stat_interval == 0:
-                self.stat.add_history(solver.net)
-                self.stat.print_stats()
-
-            self.log.debug(" Iteration: %i", solver.iter)
-
-            if solver.iter == self.max_iter:
-                break
-
-        self.log.info(" end.")
-
-    def thr_fetch(self, data_shape, label_shape):
-        """
-        Fetch the mini-batch data into the buffer.
-        ToDo - use the proper labels from the packet
-        """
-        i_batch = 0
-        nd_data = np.ndarray(shape=data_shape, dtype=np.int64)
-        nd_label = np.ndarray(shape=label_shape, dtype=np.uint8)
-        fetch_start = time.clock()
-        for packet in iter(self.train_in_queue.get, None):
-            if i_batch < self.batch_size:
-                nd_data[i_batch][...] = packet[0].transpose(
-                    [2, 0, 1])  # [channels, y, x]
-                nd_label[i_batch][...] = packet[1].transpose(
-                    [2, 0, 1])  # [channels, y, x]
-                i_batch += 1
-                continue
-
-            fetch_stop = time.clock()
-            # Data have to be copied otherwise are modified by this thread
-            self.buffer.put({'data_batch': np.array(nd_data, copy=True),
-                             'label_batch': np.array(nd_label, copy=True)})
-            self.log.debug("Thread fetch time of batch: %f",
-                           fetch_stop - fetch_start)
-            i_batch = 0
-            fetch_start = time.clock()
-
-    def save_filters(self, filters_blob, iteration):
-        """
-        Save the first layer filters - kernels
-        """
-        # First blob in BlobVec filters_blob are weights while the second
-        # biases
-        filters = filters_blob.copy()
-        filters -= filters.min()
-        filters /= filters.max()
-        n_filters = filters.shape[0]
-        filter_size = filters.shape[2] + 1  # add the border
-
-        f_tmp = np.sqrt(n_filters)
-        filters_x = np.int(f_tmp)
-        filters_y = np.int(np.ceil(f_tmp))
-        if (filters_x * filters_y) < n_filters:
-            filters_x = (filters_x + 1)
-
-        filter_array_size = np.asarray((filters_x, filters_y), np.int)
-        filter_img = np.ones(filter_array_size * filter_size, np.float32)
-
-        for i_filter in xrange(0, n_filters):
-            cnn_filter = np.pad(np.squeeze(filters[i_filter]),
-                                pad_width=((1, 0), (1, 0)), mode='constant',
-                                constant_values=1)
-            unravel_index = np.unravel_index(i_filter, filter_array_size)
-            x_y_filter_image = np.asarray(unravel_index) * filter_size
-            index_x = x_y_filter_image[0]
-            index_y = x_y_filter_image[1]
-            filter_img[index_x:index_x + filter_size,
-                       index_y:index_y + filter_size] = cnn_filter
-
-        cv2.imwrite("filters_{:06d}.png".format(iteration),
-                    (filter_img * 255).astype(np.uint))
-        # cv2.resize(filter_img*255, (0,0), fx=8, fy=8,
-        #            interpolation=cv2.INTER_NEAREST).astype(np.uint) )
-
 
 class ActivationStat(object):
-
     """
     Compute the activation stats
     """
+
+    bins = [-10000, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+                    0.99, 10000]
 
     def __init__(self, net, history_size=20):
         """
@@ -342,9 +330,8 @@ class ActivationStat(object):
         format_msg = []
         for key, data in self.list_blobs:
             avg = sum(data) / data.size
-            bins = [-10000, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
-                    0.99, 10000]
-            hist, bins = np.histogram(avg, bins)
+
+            hist, bins = np.histogram(avg, self.bins)
             hist = hist * (1.0 / np.sum(hist))
             msg_list = ["{0:3}".format(int(val * 100 + 0.5)) for val in hist]
             msg_list.insert(0, key + ":")

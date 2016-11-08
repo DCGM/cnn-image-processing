@@ -23,10 +23,13 @@ class test_zmq_queues(unittest.TestCase):
         inConfig = {'url': 'ipc://tst', 'bind': False}
         outConfig = {'url': 'ipc://tst', 'bind': True}
         inQueue = zmqQueues.InQueueZMQ(inConfig)
+	inQueue.init()
         outQueue = zmqQueues.OutQueueZMQ(outConfig)
-        time.sleep(0.01)
+	outQueue.init()
         packet = {'test': 'test'}
-        outQueue(packet, {})
+        through = outQueue(packet, {})
+        time.sleep(0.05)
+        self.assertEqual(through, [packet])
         packetsOut = inQueue(None, {})
         self.assertIsInstance(packetsOut, list)
         self.assertEqual(packet, packetsOut[0])
@@ -36,8 +39,10 @@ class test_zmq_queues(unittest.TestCase):
         inConfig = {'url': 'ipc://tst', 'bind': True}
         outConfig = {'url': 'ipc://tst', 'bind': False}
         inQueue = zmqQueues.InQueueZMQ(inConfig)
+	inQueue.init()
         outQueue = zmqQueues.OutQueueZMQ(outConfig)
-        time.sleep(0.01)
+	outQueue.init()
+        time.sleep(0.05)
         packet = {'test': 'test'}
         outQueue(packet, {})
         packetsOut = inQueue(None, {})
@@ -49,8 +54,10 @@ class test_zmq_queues(unittest.TestCase):
         inConfig = {'url': 'ipc://tst', 'bind': True}
         outConfig = {'url': 'ipc://tst', 'bind': False}
         inQueue = zmqQueues.InQueueZMQ(inConfig)
+	inQueue.init()
         outQueue = zmqQueues.OutQueueZMQ(outConfig)
-        time.sleep(0.01)
+	outQueue.init()
+        time.sleep(0.05)
         for i in [1,2,4,8,16,32,64,128,256,512,1024,2048,4096]:
             packet = {'data': np.zeros((i,i))}
             outQueue(packet, {})
@@ -63,8 +70,10 @@ class test_zmq_queues(unittest.TestCase):
         inConfig = {'url': 'ipc://tst', 'bind': True}
         outConfig = {'url': 'ipc://tst', 'bind': False}
         inQueue = zmqQueues.InQueueZMQ(inConfig)
+	inQueue.init()
         outQueue = zmqQueues.OutQueueZMQ(outConfig)
-        time.sleep(0.01)
+	outQueue.init()
+        time.sleep(0.05)
         packets = [{'test': x} for x in range(10)]
         outQueue(packets[-1], {'packets': packets[0:-1]})
         packetsOut = inQueue(None, {})
@@ -76,11 +85,14 @@ class test_zmq_queues(unittest.TestCase):
         inConfig = {'url': 'ipc://tst', 'bind': True, 'blocking': False}
         outConfig = {'url': 'ipc://tst', 'bind': False}
         inQueue = zmqQueues.InQueueZMQ(inConfig)
+	inQueue.init()
         outQueue = zmqQueues.OutQueueZMQ(outConfig)
+	outQueue.init()
+        time.sleep(0.05)
         packet = {'test': 'test'}
         self.assertRaises(ContinuePipeline, inQueue, None, {})
         outQueue(packet, {})
-        time.sleep(0.01)
+        time.sleep(0.05)
         packetsOut = inQueue(None, {})
         packetsOut = inQueue(None, {})
         self.assertIsInstance(packetsOut, list)
@@ -93,8 +105,10 @@ class test_zmq_queues(unittest.TestCase):
         inConfig = {'url': 'ipc://tst', 'bind': True, 'skip': skipCount}
         outConfig = {'url': 'ipc://tst', 'bind': False}
         inQueue = zmqQueues.InQueueZMQ(inConfig)
+	inQueue.init()
         outQueue = zmqQueues.OutQueueZMQ(outConfig)
-        time.sleep(0.01)
+	outQueue.init()
+        time.sleep(0.05)
         packet = {'test': 'test'}
         for i in range(iterations):
             outQueue(packet, {})
@@ -238,10 +252,10 @@ class test_MulAdd(unittest.TestCase):
         packetOut = packetsOut[0]
         self.assertIsNot(packetOut['data'], data)
         self.assertEqual(packetOut['data'].shape, data.shape)
-        self.assertTrue((packetOut['data'] == data * 0.5 + 10).all())
+        self.assertTrue((packetOut['data'] == (data + 10) * 0.5).all())
         self.assertIn('op', previous.keys())
         newData = previous['op'](data)
-        self.assertTrue((newData == data * 0.5 + 10).all())
+        self.assertTrue((newData == (data + 10) * 0.5).all())
         self.assertIsNot(newData, data)
 
 
