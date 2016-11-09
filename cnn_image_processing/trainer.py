@@ -18,6 +18,7 @@ import threading
 
 import caffe
 
+from .creator import Creator
 from .factory import FilterFactory
 from .utils import RoundBuffer
 from .utilities import parameter, Configurable
@@ -26,13 +27,14 @@ from .utilities import parameter, Configurable
 def fill_net_input(net, data):
     for inputName in data:
         packet_data = data[inputName]
-        net.blobs[inputName].data[...] = packet_data
+        if inputName in net.blobs:
+            net.blobs[inputName].data[...] = packet_data
+
 
 def fetch_batch(inQueue, batchSize):
     data = defaultdict(list)
     for i in range(batchSize):
         packets = inQueue({}, {})
-        #print(packets)
         for packet in packets:
             data[packet['label']].append(packet['data'])
     for key in data:
@@ -45,9 +47,16 @@ def set_shapes(net, batch):
     """
     Set the inputlayer shape according the data shape
     """
+    matched = []
+    unmatched = []
     for key, data in batch.items():
-        net.blobs[key].reshape(*data.shape)
+        if key in net.blobs:
+            net.blobs[key].reshape(*data.shape)
+            matched.append(key)
+        else:
+            unmatched.append(key)
     net.reshape()
+    return matched, unmatched
 
 
 class Tester(Configurable):
@@ -68,6 +77,26 @@ class Tester(Configurable):
             'data_queue', required=True,
             parser=lambda x: x,
             help='Queue from which data should be read.'))
+        self.params.append(parameter(
+            'evaluators', required=True,
+            parser=lambda x: x,
+            help='List of evaluators.'))
+        self.params.append(parameter(
+            'display', required=False, default=False,
+            parser=bool,
+            help='Display images.'))
+        self.params.append(parameter(
+            'data_layer', required=False, default='data',
+            parser=str,
+            help='Network input data layer.'))
+        self.params.append(parameter(
+            'gt_layer', required=False, default='labels',
+            parser=str,
+            help='Network input ground truth layer.'))
+        self.params.append(parameter(
+            'result_layer', required=False, default='out',
+            parser=str,
+            help='Network output layer.'))
 
     def __init__(self, config):
         super(Tester, self).__init__()
@@ -85,16 +114,57 @@ class Tester(Configurable):
             self.log.error(ex)
             exit(-1)
 
-    def set_net(self, net):
-        self.net = net
-        self.batch = fetch_batch(self.data_queue, self.batch_size)
+        self.evaluators = Creator.parse_filters(self.evaluators)
 
-    def test(self):
-        set_shapes(net, self.batch)
+    def set_net(self, net):
+        self.log.info(' Getting first batch in test {}'.format(self.name))
+        self.net = net
+        self.batch = fetch_batch(self.queue, self.batch_size)
+        self.log.info(' DONE Getting first batch in test {}'.format(self.name))
+
+    def crop(self, data1, data2):
+        b = [data1.shape[2] - data2.shape[2], data1.shape[3] - data2.shape[3]]
+        for i in range(len(b)):
+            if int(b[i]) % 2:
+                self.log.error(' Cant crop network inputs. Sizes are {} and {}. The difference cant be odd.'.format(data1.shape, data2.shape))
+                exit(-1)
+            b[i] = int(b[i]) / 2
+
+        return data1[:, :, b[0]:-b[0], b[1]:-b[1]]
+
+    def test(self, iteration=0):
+        self.log.info(' Running test {}'.format(self.name))
+        matched, unmatched = set_shapes(self.net, self.batch)
+        self.log.info(' Matched packets to network layers {}'.format(matched))
+        self.log.info(' Unmatched packets {}'.format(unmatched))
         for i in range(self.iterations):
-            data = fetch_batch(self.data_queue, self.batch_size)
+            data = fetch_batch(self.queue, self.batch_size)
             fill_net_input(self.net, data)
-            net.forward()
+            self.net.forward()
+
+            gt = self.net.blobs[self.gt_layer].data
+            result = self.net.blobs[self.result_layer].data
+            original = self.net.blobs[self.data_layer].data
+            gt = self.crop(gt, result)
+            original = self.crop(original, result)
+            if self.display:
+                cv2.imshow(self.name + ' gt', gt[0,:,:,:].transpose(1,2,0)+0.5)
+                cv2.imshow(self.name + ' result', result[0,:,:,:].transpose(1,2,0)+0.5)
+                cv2.imshow(self.name + ' original', original[0,:,:,:].transpose(1,2,0)+0.5)
+                cv2.waitKey(10)
+
+            for evaluator in self.evaluators:
+                evaluator.add(gt=gt, original=original, result=result)
+
+        for evaluator in self.evaluators:
+            results = evaluator.getResults()
+            for metric in results:
+                self.log.info(' Iteration {} test {} metric {} : {} {} {}'.format(
+                    iteration, self.name, metric,
+                    results[metric][1], results[metric][0],
+                    results[metric][0] - results[metric][1]))
+            evaluator.clear()
+        self.log.info(' DONE Test {}'.format(self.name))
 
 
 class Trainer(Configurable, multiprocessing.Process):
@@ -233,11 +303,16 @@ class Trainer(Configurable, multiprocessing.Process):
             self.log.info(' Training input layer shape: {} - {}'.format(
                 name, batch[name].shape))
         self.log.info(' Resizing training network.')
-        set_shapes(solver.net, batch)
+        matched, unmatched = set_shapes(solver.net, batch)
+        self.log.info(' Matched packets to network layers {}'.format(matched))
+        self.log.info(' Unmatched packets {}'.format(unmatched))
+        if unmatched:
+            self.log.error(' Some packets do not match to network layers: {}'.format(unmatched))
+            exit(-1)
 
         self.log.info(' Setting up test networks.')
         for testId, tester in enumerate(self.testers):
-            tester.set_net(solver.test_nets[testId])
+            tester.set_net(solver.test_nets[0])
 
         self.log.info(' Setting up network statistics collector.')
         self.stat = ActivationStat(solver.net)
@@ -260,7 +335,7 @@ class Trainer(Configurable, multiprocessing.Process):
             if solver.iter % self.test_interval == 0:
                 for tester in self.testers:
                     start_time = time.clock()
-                    tester.test()
+                    tester.test(iteration=solver.iter)
                     self.log.debug(" Test Iteration time: {}".format(
                         time.clock() - start_time))
 
