@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import sys
 import logging
-import yaml
+import ruamel.yaml
 import signal
 import cnn_image_processing as ci
 
@@ -44,8 +44,9 @@ def main():
 
     # Open, parse and print the configuration file
     with open(args.config_file) as file:
-        config = yaml.safe_load(file)
-        LOGGER.info(yaml.dump(config))
+        config = ruamel.yaml.load(file, ruamel.yaml.RoundTripLoader)
+        LOGGER.info(ruamel.yaml.dump(
+            config, Dumper=ruamel.yaml.RoundTripDumper))
 
     LOGGER.info(" Parsing config.")
     app = ci.Creator.parse_config(config)

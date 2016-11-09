@@ -28,5 +28,6 @@ class FilterFactory(object):
         In case the id_object has not yet been registered than add it.
         """
         if id_object not in cls.factories:
-            raise AttributeError('Unknown filter in factory: "{}"'.format(id_object))
+            raise AttributeError(' Unknown filter in configuration: "{}" at line {}'.format(id_object, config.lc.line))
+
         return cls.factories[id_object](config=config)
