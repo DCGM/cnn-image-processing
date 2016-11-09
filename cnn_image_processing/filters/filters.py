@@ -104,7 +104,8 @@ class RandomCrop(Configurable):
     @staticmethod
     def cropImage(img, pos, size):
         if pos[0] + size[0] >= img.shape[0] or pos[1] + size[1] >= img.shape[1]:
-            raise AttributeError('Crop does not fit.')
+            msg = 'ERROR Crop does not fit. pos: {}, crop size {}, image size {}'.format(pos, size, img.shape)
+            raise AttributeError(msg)
 
         return img[
             pos[0]:pos[0]+size[0],
@@ -135,7 +136,6 @@ class RandomCrop(Configurable):
         previous['op'] = functools.partial(
             RandomCrop.cropImage,
             pos=pos, size=self.size)
-
         packet['data'] = RandomCrop.cropImage(img, pos=pos, size=self.size)
 
         return [packet]
@@ -942,7 +942,31 @@ class ClipValues(object):
         packet['data'] = np.maximum( np.minimum(packet['data'], self.maxVal), self.minVal)
         return packet
 
+class Replicate(Configurable):
+    """
+    Replicates input packet multiple times.
 
+    Example:
+    Replicate: {add_count: 1}
+    """
+
+    def addParams(self):
+        self.params.append(parameter(
+            'add_count', required=False, default=1,
+            parser=lambda x: max(int(x), 1),
+            help='Number of replications.'))
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+
+    def __call__(self, packet, previous):
+        packets = [packet]
+        for i in range(self.add_count):
+            packets.append(copy.copy(packet))
+        return packets
 
 
 class HorizontalPassPackets(Configurable):
@@ -996,5 +1020,5 @@ class Pause(Configurable):
         self.parseParams(config)
 
     def __call__(self, packet, previous):
-        time.sleep(self.time)
+        cv2.waitKey( int( self.time * 1000 + 0.5))
         return [packet]
