@@ -142,7 +142,10 @@ class test_Buffer(unittest.TestCase):
         config = {'size': count}
         filter_object = filters.Buffer(config)
         for packet in packets:
-            packetsOut = filter_object(packet, {})
+            try:
+                packetsOut = filter_object(packet, {})
+            except ContinuePipeline:
+                pass
 
         good = {}
         for i in range(iterations):
@@ -158,7 +161,10 @@ class test_Buffer(unittest.TestCase):
         config = {'size': size}
         filter_object = filters.Buffer(config)
         for packet in packets:
-            packetsOut = filter_object(packet, {})
+            try:
+                packetsOut = filter_object(packet, {})
+            except ContinuePipeline:
+                pass
 
         good = {}
         for i in range(iterations):

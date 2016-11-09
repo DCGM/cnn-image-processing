@@ -2,11 +2,7 @@
 Filters, readers, and writers
 """
 
-from .. import FilterFactory
-
+import evaluators
 import readers
 import filters
 import zmqQueues
-
-
-#FilterFactory.print_registered_filters()
