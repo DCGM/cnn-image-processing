@@ -6,7 +6,6 @@ import cv2
 import numpy as np
 import math
 import copy
-import time
 import functools
 
 from .. utils import decode_dct
@@ -136,6 +135,7 @@ class RandomCrop(Configurable):
 
         return [packet]
 
+
 class Crop(Configurable):
     """
     Fixed region cropper.
@@ -183,6 +183,7 @@ class Crop(Configurable):
     def __call__(self, packet=None, pivot=None, size=None):
         return self.crop(packet=packet, pivot=pivot, size=size)
 
+
 class Img2Blob(Configurable):
     """
     Transform image to caffe blob.
@@ -201,6 +202,7 @@ class Img2Blob(Configurable):
         blob = packet['data'].transpose(2, 0, 1)
         packet['data'] = np.expand_dims(blob, axis=0)
         return [packet]
+
 
 class Label(Configurable):
     """
@@ -222,6 +224,7 @@ class Label(Configurable):
     def __call__(self, packet, previous):
         packet['label'] = self.label_name
         return [packet]
+
 
 class MulAdd(Configurable):
     """
@@ -284,7 +287,6 @@ class JPGBlockReshape(object):
 
 
 class MulQuantTable(object):
-
     """
     Mul thepacket's data with its quant table stored in [y, x, 64:]
     """
@@ -387,7 +389,6 @@ class DecodeDCT(object):
 
 
 class CodeDCT(object):
-
     """
     Code the image to coefs data
     """
@@ -408,7 +409,6 @@ class CodeDCT(object):
 
 
 class Pad8(object):
-
     """
     Pad the packet's most left nad bottom data to be divideable by 8
     """
@@ -432,7 +432,6 @@ class Pad8(object):
 
 
 class PadCoefMirror(object):
-
     '''
     Pad the packet's data representing coefficients by its mirrored view
     '''
@@ -547,7 +546,6 @@ class JPEG(Configurable):
 
 
 class ShiftImg(object):
-
     '''
     Shift - move packet's data - image
     '''
@@ -751,6 +749,7 @@ class Round(Configurable):
         packet['data'] = np.round(packet['data'])
         return [packet]
 
+
 class CentralCrop(Configurable):
     """
     Crop center portion of the image.
@@ -780,7 +779,6 @@ class CentralCrop(Configurable):
 
 
 class TRandomCropper(object):
-
     """
     Crop random area around an annotated position
     """
@@ -790,7 +788,7 @@ class TRandomCropper(object):
         self.size = size()
 
 
-def warpPerspective(rx, ry, rz, fov, img, positions=None, shift=(0,0)):
+def warpPerspective(rx, ry, rz, fov, img, positions=None, shift=(0, 0)):
 
     s = max(img.shape[0:2])
     rotVec = np.asarray((rx*np.pi/180,ry*np.pi/180, rz*np.pi/180))
@@ -822,9 +820,12 @@ def warpPerspective(rx, ry, rz, fov, img, positions=None, shift=(0,0)):
     else:
         return newImage, np.squeeze( cv2.perspectiveTransform(positions[None, :, :], T2), axis=0)
 
+
 class VirtualCamera(object):
     """
-    Transform image with random camera. X and Y are in the image plane, Z point to the camera. maxShift is in pixels. The rotation deviations are in degrees.
+    Transform image with random camera. X and Y are in the image plane,
+    Z point to the camera. maxShift is in pixels. The rotation
+    deviations are in degrees.
     """
 
     def __init__(self, rotationX_sdev, rotationY_sdev, rotationZ_sdev, min_fov, max_fov, max_shift):
@@ -836,7 +837,6 @@ class VirtualCamera(object):
         self.max_shift = max_shift
 
     def __call__(self, packet):
-        #geometric transformations
         rx = np.random.standard_normal() * self.rotationX_sdev
         ry = np.random.standard_normal() * self.rotationY_sdev
         rz = np.random.standard_normal() * self.rotationZ_sdev
@@ -862,9 +862,10 @@ class Noise(object):
 class ColorBalance(object):
     def __init__(self, color_sdev):
         self.color_sdev = color_sdev
+
     def __call__(self, packet):
         img = packet['data']
-        colorCoeff = [2**(np.random.standard_normal()*self.color_sdev) for x in range(img.shape[2])]
+        colorCoeff = [2**(np.random.standard_normal() * self.color_sdev) for x in range(img.shape[2])]
         for i, coef in enumerate(colorCoeff):
             img[:, :, i] *= coef
         packet['data'] = img
@@ -873,8 +874,9 @@ class ColorBalance(object):
 
 class ReduceContrast(object):
     """
-    Can reduce contrast by randomly shifting zero intesity up (up to min_intensity) and
-    shifting highest intensity down (at most to max_intensity).
+    Can reduce contrast by randomly shifting zero intesity up
+    (up to min_intensity) and shifting highest intensity down
+    (at most to max_intensity).
     """
     def __init__(self, min_intensity, max_intensity):
         self.min_intensity = min_intensity
@@ -883,8 +885,9 @@ class ReduceContrast(object):
     def __call__(self, packet):
         minVal = np.random.uniform(0, self.min_intensity)
         maxVal = np.random.uniform(self.max_intensity, 255)
-        packet['data'] = packet['data']/255.0 * (maxVal-minVal) + minVal
+        packet['data'] = packet['data'] / 255.0 * (maxVal - minVal) + minVal
         return packet
+
 
 class GammaCorrection(object):
     """
@@ -897,9 +900,10 @@ class GammaCorrection(object):
         self.gamma_sdev = gamma_sdev
 
     def __call__(self, packet):
-        gamma = 2**(np.random.standard_normal()*self.gamma_sdev)
+        gamma = 2**(np.random.standard_normal() * self.gamma_sdev)
         packet['data'] = (packet['data'].copy().astype(np.float32)**gamma) / (255**gamma) * 255
         return packet
+
 
 class Flip(object):
     """
@@ -922,21 +926,22 @@ class Copy(object):
     """
     def __init__(self):
         pass
+
     def __call__(self, packet):
-        old = packet['data']
         packet = copy.copy(packet)
         packet['data'] = np.copy(packet['data'])
-        newPacket = {}
         return packet
+
 
 class ClipValues(object):
     def __init__(self, minVal=0, maxVal=255):
         self.minVal = minVal
         self.maxVal = maxVal
-        pass
+
     def __call__(self, packet):
-        packet['data'] = np.maximum( np.minimum(packet['data'], self.maxVal), self.minVal)
+        packet['data'] = np.maximum(np.minimum(packet['data'], self.maxVal), self.minVal)
         return packet
+
 
 class Replicate(Configurable):
     """
@@ -995,6 +1000,7 @@ class HorizontalPassPackets(Configurable):
         else:
             return []
 
+
 class Pause(Configurable):
     """
     Sleep for a specified time and passes data through.
@@ -1016,5 +1022,5 @@ class Pause(Configurable):
         self.parseParams(config)
 
     def __call__(self, packet, previous):
-        cv2.waitKey( int( self.time * 1000 + 0.5))
+        cv2.waitKey(int(self.time * 1000 + 0.5))
         return [packet]
