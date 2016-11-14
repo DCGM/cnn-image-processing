@@ -511,40 +511,6 @@ class PadCoefMirror(object):
         return self.pad(packet)
 
 
-class JPEG(Configurable):
-    '''
-    JPEG encode and decode the input data with specified quality
-
-    Example:
-    JPEG: {quality: 20}
-    '''
-    def addParams(self):
-        self.params.append(parameter(
-            'quality', required=False, default=20, parser=int,
-            help='JPEG qualilty. 100 for maximum quality; 1 for minimum quality.'))
-
-    def __init__(self, config):
-        Configurable.__init__(self)
-        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
-        self.addParams()
-        self.parseParams(config)
-
-    def __call__(self, packet, previous):
-        '''
-        Compress the input packet's data with the jpeg encoder
-        '''
-        res, img_str = cv2.imencode('.jpeg', packet['data'],
-                                    [cv2.IMWRITE_JPEG_QUALITY, self.quality])
-        if not res:
-            self.log.error('Failed to JPEG encode data.')
-            raise ContinuePipeline
-
-        img = cv2.imdecode(np.asarray(bytearray(img_str), dtype=np.uint8),
-                           cv2.IMREAD_UNCHANGED)
-        packet['data'] = img.reshape(img.shape[0], img.shape[1], -1)
-        return [packet]
-
-
 class ShiftImg(object):
     '''
     Shift - move packet's data - image
@@ -632,21 +598,57 @@ class ShiftImg(object):
 
 class Resize(Configurable):
     """
-    Resize image using cv2.INTER_AREA.
+    Resize image.
+    Can specify multiple interpolation methods to randomly sample the method.
+
+    Options:
+        restore_size: bool
+        fixed_size: [width, height]
+        scale: [scale_width, sclale_height]
+        inter_area: bool
+        inter_lanczos4: bool
+        inter_cubic: bool
+        inter_linear: bool
+        inter_nearest: bool
 
     Examples:
-    Resize: {fixedSize=[100,100]}
-    Resize: {scale=0.5}
+    Resize: {fixed_size: [100,100], inter_lanczos4: True}
+    Resize: {scale: [0.5, 0.5]}
+    Resize: {restore_size: True}
     """
     def addParams(self):
         self.params.append(parameter(
-            'fixedSize', required=False, default=None,
+            'fixed_size', required=False, default=None,
             parser=lambda x: tuple([max(1, int(i)) for i in x[0:2]]),
             help='Pair of integers [with, height].'))
         self.params.append(parameter(
             'scale', required=False, default=None,
-            parser=lambda x: max(0.0, float(x)),
+            parser=lambda x: tuple([max(0, float(i)) for i in x[0:2]]),
             help='Image scale.'))
+        self.params.append(parameter(
+            'restore_size', required=False, default=None,
+            parser=bool,
+            help='Restore to original size before the first Resize.'))
+        self.params.append(parameter(
+            'inter_area', required=False, default=None,
+            parser=bool,
+            help='Interpolation method.'))
+        self.params.append(parameter(
+            'inter_lanczos4', required=False, default=None,
+            parser=bool,
+            help='Interpolation method.'))
+        self.params.append(parameter(
+            'inter_cubic', required=False, default=None,
+            parser=bool,
+            help='Interpolation method.'))
+        self.params.append(parameter(
+            'inter_linear', required=False, default=None,
+            parser=bool,
+            help='Interpolation method.'))
+        self.params.append(parameter(
+            'inter_nearest', required=False, default=None,
+            parser=bool,
+            help='Interpolation method.'))
 
     def __init__(self, config):
         Configurable.__init__(self)
@@ -654,18 +656,59 @@ class Resize(Configurable):
         self.addParams()
         self.parseParams(config)
 
-        if self.fixedSize is None and self.scale is None:
-            self.log.error('Either "scale" or "fixedSize" has to be specified.')
-            raise ValueError
-        if self.fixedSize is not None and self.scale is not None:
-            self.log.warning('Both "scale" and "fixedSize" can not be specified at the same time.')
-            raise ValueError
+        self.rng = np.random.RandomState()
+
+        if not self.fixed_size and not self.scale and not self.restore_size:
+            msg = ' Either "scale" or "fixed_size" or "restore_size"has to be specified. Line {}.'.format(self.line)
+            self.log.error(msg)
+            raise ValueError(msg)
+
+        self.interpolations = []
+        if self.inter_nearest:
+            self.interpolations.append(cv2.INTER_NEAREST)
+        if self.inter_linear:
+            self.interpolations.append(cv2.INTER_LINEAR)
+        if self.inter_cubic:
+            self.interpolations.append(cv2.INTER_CUBIC)
+        if self.inter_lanczos4:
+            self.interpolations.append(cv2.INTER_LANCZOS4)
+        if self.inter_area:
+            self.interpolations.append(cv2.INTER_AREA)
+        else:
+            self.interpolations = [cv2.INTER_NEAREST, cv2.INTER_LINEAR, cv2.INTER_CUBIC, cv2.INTER_LANCZOS4, cv2.INTER_AREA]
+
+    def getRandomInterpolation(self):
+        id = self.rng.randint(len(self.interpolations))
+        return self.interpolations[id]
+
+    def restoreSize(self, packet):
+        if 'original_size' not in packet:
+            msg = ' Cant restore original size - packet is missing size information. Packet has to be previously resized. Config line: {}'.format(self.line)
+            self.log.error(msg)
+            raise RuntimeError(msg)
+
+        size = packet['original_size']
+        packet['data'] = cv2.resize(
+            packet['data'], (size[1], size[0]),
+            interpolation=self.getRandomInterpolation())
+        del packet['original_size']
 
     def __call__(self, packet, previous):
-        if self.scale:
-            packet['data'] = cv2.resize(packet['data'], (0, 0), fx=self.scale, fy=self.scale, interpolation=cv2.INTER_NEAREST)
+        if 'original_size' not in packet:
+            packet['original_size'] = packet['data'].shape
+
+        if self.restore_size:
+            self.restoreSize(packet)
+        elif self.scale:
+            packet['data'] = cv2.resize(
+                packet['data'], (0, 0),
+                fx=self.scale[0], fy=self.scale[1],
+                interpolation=self.getRandomInterpolation())
         else:
-            packet['data'] = cv2.resize(packet['data'], self.fixedSize, interpolation=cv2.INTER_AREA)
+            packet['data'] = cv2.resize(
+                packet['data'], self.fixed_size,
+                interpolation=self.getRandomInterpolation())
+
         shape = packet['data'].shape
         packet['data'] = np.reshape(packet['data'], (shape[0], shape[1], -1))
         return [packet]
@@ -848,62 +891,6 @@ class VirtualCamera(object):
 
         return packet
 
-class Noise(object):
-    def __init__(self, min_noise, max_noise):
-        self.min_noise = min_noise
-        self.max_noise = max_noise
-
-    def __call__(self, packet):
-        noiseSdev = np.random.uniform(self.min_noise, self.max_noise)
-        packet['data'] = packet['data'] + np.random.randn(*packet['data'].shape) * noiseSdev
-        return packet
-
-
-class ColorBalance(object):
-    def __init__(self, color_sdev):
-        self.color_sdev = color_sdev
-
-    def __call__(self, packet):
-        img = packet['data']
-        colorCoeff = [2**(np.random.standard_normal() * self.color_sdev) for x in range(img.shape[2])]
-        for i, coef in enumerate(colorCoeff):
-            img[:, :, i] *= coef
-        packet['data'] = img
-        return packet
-
-
-class ReduceContrast(object):
-    """
-    Can reduce contrast by randomly shifting zero intesity up
-    (up to min_intensity) and shifting highest intensity down
-    (at most to max_intensity).
-    """
-    def __init__(self, min_intensity, max_intensity):
-        self.min_intensity = min_intensity
-        self.max_intensity = max_intensity
-
-    def __call__(self, packet):
-        minVal = np.random.uniform(0, self.min_intensity)
-        maxVal = np.random.uniform(self.max_intensity, 255)
-        packet['data'] = packet['data'] / 255.0 * (maxVal - minVal) + minVal
-        return packet
-
-
-class GammaCorrection(object):
-    """
-    Runs the image throug gamma correction:
-    im = im**gamma / (255**gamma) * 255,
-    where
-    gamma = 2**normal(gamma_sdev)
-    """
-    def __init__(self, gamma_sdev):
-        self.gamma_sdev = gamma_sdev
-
-    def __call__(self, packet):
-        gamma = 2**(np.random.standard_normal() * self.gamma_sdev)
-        packet['data'] = (packet['data'].copy().astype(np.float32)**gamma) / (255**gamma) * 255
-        return packet
-
 
 class Flip(object):
     """
@@ -930,16 +917,6 @@ class Copy(object):
     def __call__(self, packet):
         packet = copy.copy(packet)
         packet['data'] = np.copy(packet['data'])
-        return packet
-
-
-class ClipValues(object):
-    def __init__(self, minVal=0, maxVal=255):
-        self.minVal = minVal
-        self.maxVal = maxVal
-
-    def __call__(self, packet):
-        packet['data'] = np.maximum(np.minimum(packet['data'], self.maxVal), self.minVal)
         return packet
 
 

@@ -151,7 +151,7 @@ class Tester(Configurable):
                 cv2.imshow(self.name + ' gt', gt[0,:,:,:].transpose(1,2,0)+0.5)
                 cv2.imshow(self.name + ' result', result[0,:,:,:].transpose(1,2,0)+0.5)
                 cv2.imshow(self.name + ' original', original[0,:,:,:].transpose(1,2,0)+0.5)
-                cv2.waitKey(10)
+                cv2.waitKey(5)
 
             for evaluator in self.evaluators:
                 evaluator.add(gt=gt, original=original, result=result)
@@ -189,8 +189,8 @@ class Trainer(Configurable, multiprocessing.Process):
             'caffe_solver_file', required=True,
             help='Caffe solver configuration.'))
         self.params.append(parameter(
-            'caffe_solverstate', required=False,
-            help='Caffe solverstate from which should training continue.'))
+            'caffe_solver_state', required=False,
+            help='Caffe solver state from which should training continue.'))
         self.params.append(parameter(
             'caffe_weights', required=False,
             help='Caffe model file used to initialize weights.'))
@@ -210,6 +210,10 @@ class Trainer(Configurable, multiprocessing.Process):
             'tests', required=False, default=[],
             parser=lambda x: x,
             help='List of test specifications.'))
+        self.params.append(parameter(
+            'save_filters', required=False, default=None,
+            parser=bool,
+            help='Will save collage of first layer filters.'))
 
     def __init__(self, config):
         multiprocessing.Process.__init__(self)
@@ -259,9 +263,9 @@ class Trainer(Configurable, multiprocessing.Process):
         self.log.info(" Reading solver file: %s", solver_file)
         solver = caffe.get_solver(solver_file)
 
-        if self.caffe_solverstate:
-            self.log.info(" Loading solver state: {}".format(self.caffe_solverstate))
-            solver.restore(self.caffe_solverstate)
+        if self.caffe_solver_state:
+            self.log.info(" Loading solver state: {}".format(self.caffe_solver_state))
+            solver.restore(self.caffe_solver_state)
         elif self.caffe_weights:
             self.log.info(" Loading weights: %s", self.caffe_weights)
             solver.net.copy_from(self.caffe_weights)
@@ -360,6 +364,8 @@ class Trainer(Configurable, multiprocessing.Process):
         self.log.info(" End phase Test.")
         return fetch_flag
 
+class FilterStat(object):
+    pass
 
 class ActivationStat(object):
     """
