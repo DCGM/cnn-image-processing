@@ -76,6 +76,11 @@ class Configurable(object):
 
     def parseParams(self, config):
         try:
+            self.line = config.lc.line
+        except:
+            self.line = 0
+
+        try:
             configCopy = copy.copy(config)
             for param in self.params:
                 value = param(config)
