@@ -1,0 +1,111 @@
+- Trainer:
+    batch_size: 64
+    max_iter: 1000000
+    use_gpu: True
+    gpu_id: 0
+    caffe_solver_file: solver.prototxt
+    caffe_solver_state:
+    caffe_weights:
+    test_interval: 2000
+    stat_interval: 100
+    train_data:
+      InQueueZMQ: {url: "ipc://./training_crops", blocking: True}
+    tests:
+      - name: BSDS
+        batch_size: 1
+        iterations: 101
+        data_layer: "data"
+        gt_layer: "labels"
+        result_layer: "out"
+        display: True
+        data_queue: { InQueueZMQ: {url: "ipc://./testing_crops", blocking: True} }
+        evaluators:
+          - PSNR: {max_value: 1}
+
+## training data source ----------------------------------------------------------------------------
+- Process:
+    name: 'training_images'
+    pipeline:
+      -
+        - ListFileReader: {loop: True, file_name: "./BSDS.trn", loop: True}
+      -
+        - ImageReader: {grayscale: False}
+      -
+        - Replicate: {add_count: 1}
+      -
+        - Label: {label_name: "labels"}
+        - Label: {label_name: "data"}
+      -
+        - Pass: {}
+        - Resize: {scale: [0.5,0.5], inter_area: True, inter_lanczos4: True, inter_cubic: True, inter_nearest: True}
+      -
+        - Pass: {}
+        - JPEG: {quality_low: 50, quality_high: 100}
+      -
+        - Pass: {}
+        - Resize: {restore_size: True, inter_cubic: True}
+      -
+        - Pass: {}
+        - Resize: {restore_size: True, inter_cubic: True}
+      -
+        - MulAdd: {add: -127, mul: 0.004}
+        - MulAdd: {add: -127, mul: 0.004}
+      -
+        - HorizontalPassPackets: {pass_through: False}
+        - OutQueueZMQ: {url: "ipc://./training_images"}
+
+- Process:
+    name: 'training_sampler'
+    pipeline:
+      -
+        - InQueueZMQ: {url: "ipc://./training_images", blocking: False, skip: 32} # Read image if one is available. Generates at least 9 crops per image - could be more if no input is available
+      -
+        - HorizontalPassPackets: {pass_through: False} # caches 500 images, selects one in random
+        - Buffer: {size: 600} # selects based on the first one
+        # FIFOBuffer can raise CONTINUE exception until the cache is filled; on CONTINUE all filters in a pipline layer must be called
+      -
+        - RandomCrop: {width: 34, height: 34}
+        - RepeatOperation: {}
+      -
+        - Img2Blob: {}
+        - Img2Blob: {}
+      -
+        - HorizontalPassPackets: {pass_through: False}
+        - OutQueueZMQ: {url: "ipc://./training_crops"} # sends crop to queue
+
+
+## training data source ----------------------------------------------------------------------------
+- Process:
+    name: 'testing_images'
+    pipeline:
+      -
+        - ListFileReader: {loop: True, file_name: "./BSDS.val", loop: True}
+      -
+        - ImageReader: {grayscale: False}
+      -
+        - Replicate: {add_count: 1}
+      -
+        - Label: {label_name: "labels"}
+        - Label: {label_name: "data"}
+      -
+        - Pass: {}
+        - Resize: {scale: [0.5,0.5], inter_area: True, inter_lanczos4: True, inter_cubic: True, inter_nearest: True}
+      -
+        - Pass: {}
+        - JPEG: {quality_low: 50, quality_high: 100}
+      -
+        - Pass: {}
+        - Resize: {restore_size: True, inter_cubic: True}
+      -
+        - MulAdd: {add: -127, mul: 0.004}
+        - MulAdd: {add: -127, mul: 0.004}
+      -
+        - RandomCrop: {width: 320, height: 320}
+        - RepeatOperation: {}
+      -
+        - Img2Blob: {}
+        - Img2Blob: {}
+      -
+        - HorizontalPassPackets: {pass_through: False}
+        - OutQueueZMQ: {url: "ipc://./testing_crops"} # sends crop to queue
+
