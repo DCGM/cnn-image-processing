@@ -358,7 +358,9 @@ class Preview(Configurable):
         name = self.name
         if name is None and 'label' in packet:
             name = packet['label']
+        self.log.info('{} {}'.format(packet['data'].max(), packet['data'].min()))
         img = packet['data'] / self.norm + self.shift
+        self.log.info('{} {}'.format(img.max(), img.min()))
         if 'path' in packet:
             self.log.info(packet['path'])
         cv2.imshow(name, img)
@@ -798,11 +800,15 @@ class CentralCrop(Configurable):
     Crop center portion of the image.
 
     Example:
-    CentralCrop: {size=10}
+    CentralCrop: {width=10, height=10}
     """
     def addParams(self):
         self.params.append(parameter(
-            'size', required=True,
+            'width', required=True,
+            parser=lambda x: max(int(x), 1),
+            help='Size of the croped region.'))
+        self.params.append(parameter(
+            'height', required=True,
             parser=lambda x: max(int(x), 1),
             help='Size of the croped region.'))
 
@@ -813,11 +819,11 @@ class CentralCrop(Configurable):
         self.parseParams(config)
 
     def __call__(self, packet, previous):
-        border = (int((packet['data'].shape[0] - self.size) / 2),
-                  int((packet['data'].shape[1] - self.size) / 2))
+        border = (int((packet['data'].shape[0] - self.height) / 2),
+                  int((packet['data'].shape[1] - self.width) / 2))
         packet['data'] = packet['data'][
-            border[0]:border[0] + self.size,
-            border[1]:border[1] + self.size]
+            border[0]:border[0] + self.height,
+            border[1]:border[1] + self.width]
         return [packet]
 
 
