@@ -39,7 +39,7 @@ class PSNR(Configurable):
             axis = tuple(range(1, len(data.shape)))
             mse = np.mean(diff2, axis=axis)
 
-        psnr = np.mean(10 * np.log10(self.max_value**2 / mse))
+        psnr = np.mean(10 * np.log10(self.max_value**2 / (mse + (self.max_value*0.00001)**2)))
         mse = np.mean(mse)
         return mse, psnr
 
