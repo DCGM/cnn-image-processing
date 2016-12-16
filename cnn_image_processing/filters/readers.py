@@ -63,13 +63,16 @@ class ImageReader(Configurable):
     Always returns the float 3dim numpy array.
 
     Example:
-    ImageReader: {grayscale: True}
+    ImageReader: {grayscale: True, path: '/some/path/'}
     """
 
     def addParams(self):
         self.params.append(parameter(
             'grayscale', required=False, default=False, parser=bool,
             help='All images will be converted to grayscale - reading RGB otherwise.'))
+        self.params.append(parameter(
+            'path', required=False, default='', parser=str,
+            help='Path to images.'))
 
     def __init__(self, config):
         Configurable.__init__(self)
@@ -87,7 +90,7 @@ class ImageReader(Configurable):
         img = None
         try:
             packet['path'] = packet['data']
-            path = packet['data']
+            path = os.path.join(self.path, packet['data'])
             img = cv2.imread(path, self.load_flag).astype(np.float32)
             if len(img.shape) == 2:
                 img = img.reshape(img.shape[0], img.shape[1], 1)
