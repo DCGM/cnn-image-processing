@@ -40,6 +40,7 @@ def fetch_batch(inQueue, batchSize):
     for key in data:
         data[key] = np.concatenate(data[key])
 
+    #data['id'] = data['id'].reshape(-1,1)
     return data
 
 
@@ -137,10 +138,13 @@ class Tester(Configurable):
         matched, unmatched = set_shapes(self.net, self.batch)
         self.log.info(' Matched packets to network layers {}'.format(matched))
         self.log.info(' Unmatched packets {}'.format(unmatched))
+        loss = []
         for i in range(self.iterations):
             data = fetch_batch(self.queue, self.batch_size)
             fill_net_input(self.net, data)
             self.net.forward()
+            if 'loss' in self.net.blobs:
+                loss.append(np.copy(self.net.blobs['loss'].data))
 
             gt = self.net.blobs[self.gt_layer].data
             result = self.net.blobs[self.result_layer].data
@@ -148,13 +152,27 @@ class Tester(Configurable):
             gt = self.crop(gt, result)
             original = self.crop(original, result)
             if self.display:
-                cv2.imshow(self.name + ' gt', gt[0,:,:,:].transpose(1,2,0)+0.5)
-                cv2.imshow(self.name + ' result', result[0,:,:,:].transpose(1,2,0)+0.5)
-                cv2.imshow(self.name + ' original', original[0,:,:,:].transpose(1,2,0)+0.5)
-                cv2.waitKey(5)
+                tmp = cv2.resize(
+                    gt[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
+                    fx=2, fy=2)
+                cv2.imshow(self.name + ' gt', tmp)
+                tmp = cv2.resize(
+                    result[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
+                    fx=2, fy=2)
+                cv2.imshow(self.name + ' result', tmp)
+                tmp = cv2.resize(
+                    original[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
+                    fx=2, fy=2)
+                cv2.imshow(self.name + ' original', tmp)
+                cv2.waitKey(0)
 
             for evaluator in self.evaluators:
                 evaluator.add(gt=gt, original=original, result=result)
+
+        if loss:
+            loss = np.mean(loss)
+            self.log.info(' Iteration {} test {} metric loss : {}'.format(
+                iteration, self.name, loss))
 
         for evaluator in self.evaluators:
             results = evaluator.getResults()
@@ -301,7 +319,7 @@ class Trainer(Configurable, multiprocessing.Process):
 
         self.log.info(' Initializing caffe')
         solver = self.init_caffe(self.caffe_solver_file)
-        self.log.info(' Reading initial batch from training data queue.')
+        self.log.info(' Reading initial batch from training data queue. (May take a while if image buffers are used in data pipeline.')
         batch = fetch_batch(self.train_in_queue, self.batch_size)
         for name in batch:
             self.log.info(' Training input layer shape: {} - {}'.format(
@@ -347,6 +365,12 @@ class Trainer(Configurable, multiprocessing.Process):
             if solver.iter % self.stat_interval == 0:
                 self.stat.add_history(solver.net)
                 self.stat.print_stats()
+                #data = solver.net.blobs['data'].data[...].transpose(0,2,3,1)
+                #data = data.reshape(-1, data.shape[2], data.shape[3])
+                #dataOut = solver.net.blobs['cout-scale'].data[...].transpose(0,2,3,1)
+                #dataOut = dataOut.reshape(-1, dataOut.shape[2], dataOut.shape[3])
+                #cv2.imwrite('{:06d}_data.jpg'.format(solver.iter), data + 127)
+                #cv2.imwrite('{:06d}_dataOut.jpg'.format(solver.iter), dataOut + 127)
 
             self.log.debug(" Iteration: %i", solver.iter)
 
@@ -399,7 +423,7 @@ class ActivationStat(object):
             # average of every activation map in the batch
             if len(net.blobs[key].shape) == 2:
                 avg_data = np.average(net.blobs[key].data > 0, (0))
-            else:
+            elif len(net.blobs[key].shape) == 4:
                 avg_data = np.average(net.blobs[key].data > 0, (0, 2, 3))
 
             data.append_round(avg_data)
