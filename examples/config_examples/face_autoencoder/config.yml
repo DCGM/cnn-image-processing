@@ -1,0 +1,35 @@
+- Trainer:
+    batch_size: 1
+    max_iter: 1000000
+    use_gpu: True
+    gpu_id: 0
+    caffe_solver_file: solver.prototxt
+    caffe_solver_state:
+    caffe_weights: net_iter_3000.caffemodel
+    test_interval: 2000
+    stat_interval: 1
+    train_data:
+      InQueueZMQ: {url: "ipc://./training_crops", blocking: True}
+
+## training data source ----------------------------------------------------------------------------
+- Process:
+    name: 'training_images'
+    pipeline:
+      -
+        - ListFileReader: {loop: False, file_name: "./temp.list"}
+      -
+        - TupleReader: {}
+        - ImageReader: {grayscale: False}
+      -
+        - Label: {label_name: "id"}
+        - Label: {label_name: "data"}
+      -
+        - Pass: {}
+        - MulAdd: {add: -127}
+      -
+        - Pass: {}
+        - Img2Blob: {}
+      -
+        - HorizontalPassPackets: {pass_through: False}
+        - OutQueueZMQ: {url: "ipc://./training_crops"}
+

@@ -7,3 +7,4 @@ import evaluators
 import readers
 import filters
 import zmqQueues
+import geometric
