@@ -100,11 +100,11 @@ class RandomCrop(Configurable):
     def cropImage(img, pos, size):
         if pos[0] + size[0] >= img.shape[0] or pos[1] + size[1] >= img.shape[1]:
             msg = 'ERROR Crop does not fit. pos: {}, crop size {}, image size {}'.format(pos, size, img.shape)
-            raise AttributeError(msg)
+            raise ContinuePipeline(msg)
 
         return img[
-            pos[0]:pos[0]+size[0],
-            pos[1]:pos[1]+size[1], :]
+            pos[0]:pos[0] + size[0],
+            pos[1]:pos[1] + size[1], :]
 
     def __init__(self, config):
         Configurable.__init__(self)
@@ -125,14 +125,14 @@ class RandomCrop(Configurable):
             msg = ' Image is too small ({},{}) to crop ({},{}).'.format(
                 img.shape[1], img.shape[0], self.width, self.height)
             self.log.warning(msg)
+            previous['op'] = lambda x: x
             raise ContinuePipeline
 
         pos = (self.rng.randint(max0), self.rng.randint(max1))
         previous['op'] = functools.partial(
             RandomCrop.cropImage,
             pos=pos, size=self.size)
-        packet['data'] = RandomCrop.cropImage(img, pos=pos, size=self.size)
-
+        packet['data'] = previous['op'](img)
         return [packet]
 
 
@@ -358,9 +358,7 @@ class Preview(Configurable):
         name = self.name
         if name is None and 'label' in packet:
             name = packet['label']
-        self.log.info('{} {}'.format(packet['data'].max(), packet['data'].min()))
         img = packet['data'] / self.norm + self.shift
-        self.log.info('{} {}'.format(img.max(), img.min()))
         if 'path' in packet:
             self.log.info(packet['path'])
         cv2.imshow(name, img)
@@ -800,15 +798,11 @@ class CentralCrop(Configurable):
     Crop center portion of the image.
 
     Example:
-    CentralCrop: {width=10, height=10}
+    CentralCrop: {size=10}
     """
     def addParams(self):
         self.params.append(parameter(
-            'width', required=True,
-            parser=lambda x: max(int(x), 1),
-            help='Size of the croped region.'))
-        self.params.append(parameter(
-            'height', required=True,
+            'size', required=True,
             parser=lambda x: max(int(x), 1),
             help='Size of the croped region.'))
 
@@ -819,11 +813,11 @@ class CentralCrop(Configurable):
         self.parseParams(config)
 
     def __call__(self, packet, previous):
-        border = (int((packet['data'].shape[0] - self.height) / 2),
-                  int((packet['data'].shape[1] - self.width) / 2))
+        border = (int((packet['data'].shape[0] - self.size) / 2),
+                  int((packet['data'].shape[1] - self.size) / 2))
         packet['data'] = packet['data'][
-            border[0]:border[0] + self.height,
-            border[1]:border[1] + self.width]
+            border[0]:border[0] + self.size,
+            border[1]:border[1] + self.size]
         return [packet]
 
 
