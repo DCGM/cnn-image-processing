@@ -59,11 +59,11 @@ class MotionBlur(Configurable):
         else:
             self.rng = np.random.RandomState()
 
-    def __call__(self, packet):
+    def __call__(self, packet, previous):
         sampled_slope_deg = self.rng.uniform(
-            low=self.slope_deg[0], high=self.slope_deg[1])
+            low=self.dir_range[0], high=self.dir_range[1])
         sampled_length = self.rng.uniform(
-            low=self.length[0], high=self.length[1])
+            low=self.length_range[0], high=self.length_range[1])
 
         psf = self.generateMotionBlurPSF(sampled_slope_deg, sampled_length)
 
@@ -139,10 +139,10 @@ class MotionBlur(Configurable):
             sup_kernel, dsize=(int(kernel_size_odd), int(kernel_size_odd)),
             interpolation=cv2.INTER_AREA)
 
-        cv2.imshow('large', sup_kernel)
+        #cv2.imshow('large', sup_kernel)
         psf = psf / psf.max()
-        cv2.imshow('small', psf)
-        cv2.waitKey()
+        #cv2.imshow('small', psf)
+        #cv2.waitKey()
         psf = psf / psf.sum()
         return psf
 
@@ -399,7 +399,7 @@ class GammaCorrection(Configurable):
         return [packet]
 
 
-class ReduceContrast(object):
+class ReduceContrast(Configurable):
     """
     Can reduce contrast by randomly shifting zero intesity up
     (up to min_intensity) and shifting highest intensity down
@@ -413,15 +413,20 @@ class ReduceContrast(object):
 
     def addParams(self):
         self.params.append(parameter(
-            'gamma_sdev', required=True, parser=float,
-            help='Gamma standard deviation.'))
+            'min_intensity', required=True, parser=float,
+            help='Maximal minimum intensity.'))
+        self.params.append(parameter(
+            'max_intensity', required=True, parser=float,
+            help='Maximal minimum intensity.'))
 
-    def __init__(self, min_intensity, max_intensity):
-        self.min_intensity = min_intensity
-        self.max_intensity = max_intensity
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
 
-    def __call__(self, packet):
+    def __call__(self, packet, previous):
         minVal = np.random.uniform(0, self.min_intensity)
         maxVal = np.random.uniform(self.max_intensity, 255)
         packet['data'] = packet['data'] / 255.0 * (maxVal - minVal) + minVal
-        return packet
+        return [packet]

@@ -136,7 +136,7 @@ class RandomCrop(Configurable):
         return [packet]
 
 
-class Crop(Configurable):
+class Crop(object):
     """
     Fixed region cropper.
     The pivot is is obtained as the floor divide of size.
@@ -336,6 +336,9 @@ class Preview(Configurable):
 
     def addParams(self):
         self.params.append(parameter(
+            'store', required=False, default=False, parser=bool,
+            help='Images will be written to the current work directory?'))
+        self.params.append(parameter(
             'norm', required=False, default=1.0, parser=float,
             help='Image will be multiplied by this number.'))
         self.params.append(parameter(
@@ -350,6 +353,7 @@ class Preview(Configurable):
         self.log = logging.getLogger(__name__ + "." + type(self).__name__)
         self.addParams()
         self.parseParams(config)
+        self.counter = 0
 
     def __call__(self, packet, previous):
         """
@@ -361,9 +365,12 @@ class Preview(Configurable):
         img = packet['data'] / self.norm + self.shift
         if 'path' in packet:
             self.log.info(packet['path'])
-        cv2.imshow(name, img)
-        cv2.waitKey(2)
-
+        if self.store:
+            cv2.imwrite('{:05d}_{}.jpg'.format(self.counter, name), img)
+        else:
+            cv2.imshow(name, img)
+            cv2.waitKey(2)
+        self.counter += 1
         return [packet]
 
 
