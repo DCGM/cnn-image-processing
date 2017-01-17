@@ -5,6 +5,7 @@ import logging
 import cv2
 import numpy as np
 import functools
+import itertools
 from pandas import ewma
 
 from ..utilities import parameter, Configurable, ContinuePipeline
@@ -35,6 +36,18 @@ class MotionBlur(Configurable):
             'rng_seed', required=False, default=None,
             parser=lambda x: max(int(x), 1),
             help='Size of the buffer'))
+        self.params.append(parameter(
+            'motion_packet', required=False, default=False,
+            parser=bool,
+            help='If true, will add new packet with single value encoding the motion filter (direction and length).'))
+        self.params.append(parameter(
+            'length_bins', required=False, default=6,
+            parser=int,
+            help='Number of bins encoding motion length.'))
+        self.params.append(parameter(
+            'dir_bins', required=False, default=12,
+            parser=int,
+            help='Number of bins encoding motion orientations.'))
 
     def verifyParams(self):
         if len(self.dir_range) != 2 or len(self.length_range) != 2:
@@ -59,11 +72,25 @@ class MotionBlur(Configurable):
         else:
             self.rng = np.random.RandomState()
 
+        step = (self.length_range[1] - self.length_range[0]) / self.length_bins
+        length_bins = [
+            (x * step, x * step + step) for x in range(self.length_bins)]
+        step = (self.dir_range[1] - self.dir_range[0]) / self.dir_bins
+        dir_bins = [
+            (x * step, x * step + step) for x in range(self.dir_bins)]
+        self.bins = list(itertools.product(length_bins, dir_bins))
+        self.next_bins = list(np.random.permutation(self.bins))
+
     def __call__(self, packet, previous):
+        try:
+            length_range, dir_range = self.next_bins.pop()
+        except:
+            self.next_bins = list(np.random.permutation(self.bins))
+
         sampled_slope_deg = self.rng.uniform(
-            low=self.dir_range[0], high=self.dir_range[1])
+            low=dir_range[0], high=dir_range[1])
         sampled_length = self.rng.uniform(
-            low=self.length_range[0], high=self.length_range[1])
+            low=length_range[0], high=length_range[1])
 
         psf = self.generateMotionBlurPSF(sampled_slope_deg, sampled_length)
 
@@ -84,7 +111,22 @@ class MotionBlur(Configurable):
             packet['data'], cv2.CV_32F, psf,
             borderType=cv2.BORDER_REPLICATE)
 
-        return [packet]
+        if self.motion_packet:
+            length_encoding = int(
+                (sampled_length - self.length_range[0]) /
+                (self.length_range[1] - self.length_range[0]) *
+                (self.length_bins))
+            direction_encoding = int(
+                (sampled_slope_deg - self.dir_range[0]) /
+                (self.dir_range[1] - self.dir_range[0]) *
+                self.dir_bins)
+            encoding = length_encoding + direction_encoding * self.length_bins
+            encoding = np.asarray(encoding).reshape(1)
+
+            encoding_packet = {'data': encoding}
+            return [packet, encoding_packet]
+        else:
+            return [packet]
 
     def generateMotionBlurPSF(self, slope_deg, length):
         """Create a linear  motion blur PSF (Point Spread Function).
