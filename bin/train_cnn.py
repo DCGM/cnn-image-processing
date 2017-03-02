@@ -20,8 +20,6 @@ def parse_args():
 
     parser.add_argument("-c", "--config-file", required=True,
                         help="YAML configuration file.")
-    parser.add_argument("-s", "--solver-file", required=True,
-                        help="Caffe solver file.")
     parser.add_argument("-v", "--verbose", action="store_true", required=False,
                         help="Set the verbose mode.")
 
