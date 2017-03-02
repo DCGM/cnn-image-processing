@@ -7,6 +7,99 @@ import numpy as np
 
 from ..utilities import parameter, Configurable, ContinuePipeline, TerminatePipeline
 
+
+class PickledWriter(Configurable):
+    """
+    Save pickled data into a file.
+
+    Example:
+    PickledWriter: {file_name: "out.bin", count: 1000}
+    """
+    def addParams(self):
+        self.params.append(parameter(
+            'file_name', required=True,
+            parser=str, help='Name of the output file.'))
+        self.params.append(parameter(
+            'count', required=True,
+            parser=int,
+            help='Number of stored packets.'))
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+        self.mem = []
+
+    def __call__(self, packet, previous):
+        if len(self.mem) >= self.count:
+            with open(self.file_name, 'w') as f:
+                import cPickle
+                cPickle.dump(self.mem, f)
+            self.log.info(
+                'Written {} packets into "{}"'.format(
+                    len(self.mem), self.file_name))
+            raise TerminatePipeline
+
+        if 'packets' in previous:
+            packets = []
+            packets.extend(previous['packets'])
+            packets.append(packet)
+        else:
+            packets = [packet]
+
+        self.mem.append(packets)
+        self.log.info('Packets {}/{}'.format(len(self.mem), self.count))
+        raise ContinuePipeline
+
+
+class PickledReader(Configurable):
+    """
+    Load pickled data from a file.
+
+    Example:
+    PickledReader: {file_name: "out.bin", loop: True}
+    """
+
+    def addParams(self):
+        self.params.append(parameter(
+            'file_name', required=True, parser=str,
+            help='File name string'))
+        self.params.append(parameter(
+            'loop', default=True, parser=bool,
+            help='Should the reader loop over the file infinitely?'))
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+        self.pos = 0
+        try:
+            with open(self.file_name, 'r') as f:
+                import cPickle
+                self.data = cPickle.load(f)
+        except IOError as ex:
+            self.log.error("Failed to open file '%s'", self.file_name)
+            self.log.error(ex)
+            raise ex
+
+
+    def __call__(self, packet, previous):
+        packets = self.data[self.pos]
+
+        self.pos += 1
+        if self.pos == len(self.data):
+            if self.loop:
+                self.pos = 0
+            else:
+                self.log.info(
+                    'Finished reading file "{}"'.format(self.file_name))
+                raise TerminatePipeline
+
+        return packets
+
+
 class ListFileReader(Configurable):
     """
     Reads a file and parses lines into white-space separated items.
@@ -129,6 +222,26 @@ class TupleReader(Configurable):
             self.log.exception("Failed to parse float tuple '{}'".format(packet['data']))
             raise ContinuePipeline
         return [packet]
+
+class TupleSplitter(Configurable):
+
+    """
+    Splits single tuple into multiple packets.
+
+    Example:
+    TupleSplitter: {}
+    """
+
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+
+    def __call__(self, packet, previous):
+        newPackets = [{'data': np.asarray(x).astype(np.float32).reshape(1, 1, -1)} for x in packet['data'].reshape(-1)]
+        return newPackets
+
 
 
 class ImageX8Reader(Configurable):
