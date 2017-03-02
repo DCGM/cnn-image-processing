@@ -119,11 +119,11 @@ class RandomCrop(Configurable):
 
     def __call__(self, packet, previous):
         img = packet['data']
-        max0 = img.shape[0] - self.height
-        max1 = img.shape[1] - self.width
+        max0 = img.shape[0] - self.size[0] + 1
+        max1 = img.shape[1] - self.size[1] + 1
         if max0 < 1 or max1 < 1:
-            msg = ' Image is too small ({},{}) to crop ({},{}).'.format(
-                img.shape[1], img.shape[0], self.width, self.height)
+            msg = ' Image is too small {} to crop {} {}:{}.'.format(
+                img.shape, self.size, max0, max1)
             self.log.warning(msg)
             previous['op'] = lambda x: x
             raise ContinuePipeline
@@ -199,7 +199,9 @@ class Img2Blob(Configurable):
         self.parseParams(config)
 
     def __call__(self, packet, previous):
-        blob = packet['data'].transpose(2, 0, 1)
+        blob = packet['data']
+        blob = blob.reshape( blob.shape[0], blob.shape[1], -1)
+        blob = blob.transpose(2, 0, 1)
         packet['data'] = np.expand_dims(blob, axis=0)
         return [packet]
 
@@ -799,6 +801,24 @@ class Round(Configurable):
         packet['data'] = np.round(packet['data'])
         return [packet]
 
+class Norm(Configurable):
+    """
+    Normalize to zero mean and unit variance.
+
+    Example:
+    Norm: {}
+    """
+    def __init__(self, config):
+        Configurable.__init__(self)
+        self.log = logging.getLogger(__name__ + "." + type(self).__name__)
+        self.addParams()
+        self.parseParams(config)
+
+    def __call__(self, packet, previous):
+        packet['data'] -= packet['data'].mean()
+        packet['data'] /= np.std(packet['data']) + 1e-20
+        return [packet]
+
 
 class CentralCrop(Configurable):
     """
@@ -809,22 +829,34 @@ class CentralCrop(Configurable):
     """
     def addParams(self):
         self.params.append(parameter(
-            'size', required=True,
+            'size', required=False,
             parser=lambda x: max(int(x), 1),
             help='Size of the croped region.'))
+        self.params.append(parameter(
+            'width', required=False, default=32,
+            parser=lambda x: max(int(x), 1),
+            help='Width of the croped region.'))
+        self.params.append(parameter(
+            'height', required=False, default=32,
+            parser=lambda x: max(int(x), 1),
+            help='Height of the croped region.'))
 
     def __init__(self, config):
         Configurable.__init__(self)
         self.log = logging.getLogger(__name__ + "." + type(self).__name__)
         self.addParams()
         self.parseParams(config)
+        if self.size:
+            self.width = self.size
+            self.height = self.size
+
 
     def __call__(self, packet, previous):
-        border = (int((packet['data'].shape[0] - self.size) / 2),
-                  int((packet['data'].shape[1] - self.size) / 2))
+        border = (int((packet['data'].shape[0] - self.height) / 2),
+                  int((packet['data'].shape[1] - self.width) / 2))
         packet['data'] = packet['data'][
-            border[0]:border[0] + self.size,
-            border[1]:border[1] + self.size]
+            border[0]:border[0] + self.height,
+            border[1]:border[1] + self.width]
         return [packet]
 
 
@@ -897,7 +929,6 @@ class VirtualCamera(object):
         packet['data'] = warpPerspective(rx, ry, rz, fov, packet['data'], shift=shift)
 
         return packet
-
 
 class Flip(object):
     """
