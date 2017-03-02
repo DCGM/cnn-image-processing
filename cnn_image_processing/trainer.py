@@ -3,6 +3,10 @@ Created on May 27, 2016
 
 @author: isvoboda
 '''
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+plt.ioff()
 
 import Queue
 from Queue import Empty
@@ -52,6 +56,7 @@ def set_shapes(net, batch):
     unmatched = []
     for key, data in batch.items():
         if key in net.blobs:
+            print(' Shapes {} {} {}'.format(key, net.blobs[key].data.shape, data.shape))
             net.blobs[key].reshape(*data.shape)
             matched.append(key)
         else:
@@ -79,13 +84,17 @@ class Tester(Configurable):
             parser=lambda x: x,
             help='Queue from which data should be read.'))
         self.params.append(parameter(
-            'evaluators', required=True,
-            parser=lambda x: x,
+            'evaluators', required=False,
+            parser=list,
             help='List of evaluators.'))
         self.params.append(parameter(
             'display', required=False, default=False,
             parser=bool,
             help='Display images.'))
+        self.params.append(parameter(
+            'write', required=False, default=False,
+            parser=bool,
+            help='Write images to disk.'))
         self.params.append(parameter(
             'data_layer', required=False, default='data',
             parser=str,
@@ -138,41 +147,53 @@ class Tester(Configurable):
         matched, unmatched = set_shapes(self.net, self.batch)
         self.log.info(' Matched packets to network layers {}'.format(matched))
         self.log.info(' Unmatched packets {}'.format(unmatched))
-        loss = []
+        loss = defaultdict(list)
         for i in range(self.iterations):
             data = fetch_batch(self.queue, self.batch_size)
             fill_net_input(self.net, data)
-            self.net.forward()
-            if 'loss' in self.net.blobs:
-                loss.append(np.copy(self.net.blobs['loss'].data))
+            outputs = self.net.forward()
+            for output in outputs:
+                loss[output].append(self.net.blobs[output].data.mean())
 
-            gt = self.net.blobs[self.gt_layer].data
-            result = self.net.blobs[self.result_layer].data
-            original = self.net.blobs[self.data_layer].data
-            gt = self.crop(gt, result)
-            original = self.crop(original, result)
-            if self.display:
-                tmp = cv2.resize(
-                    gt[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
-                    fx=2, fy=2)
-                cv2.imshow(self.name + ' gt', tmp)
-                tmp = cv2.resize(
-                    result[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
-                    fx=2, fy=2)
-                cv2.imshow(self.name + ' result', tmp)
-                tmp = cv2.resize(
-                    original[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
-                    fx=2, fy=2)
-                cv2.imshow(self.name + ' original', tmp)
-                cv2.waitKey(0)
+            if self.evaluators:
+                gt = self.net.blobs[self.gt_layer].data
+                result = self.net.blobs[self.result_layer].data
+                original = self.net.blobs[self.data_layer].data
+                gt = self.crop(gt, result)
+                original = self.crop(original, result)
+                if self.display:
+                    tmp = cv2.resize(
+                        gt[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
+                        fx=2, fy=2)
+                    cv2.imshow(self.name + ' gt', tmp)
+                    tmp = cv2.resize(
+                        result[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
+                        fx=2, fy=2)
+                    cv2.imshow(self.name + ' result', tmp)
+                    tmp = cv2.resize(
+                        original[0, :, :, :].transpose(1, 2, 0) + 0.5, (0, 0),
+                        fx=2, fy=2)
+                    cv2.imshow(self.name + ' original', tmp)
+                    cv2.waitKey(20)
 
-            for evaluator in self.evaluators:
-                evaluator.add(gt=gt, original=original, result=result)
+                if self.write:
+                    cv2.imwrite(
+                        'output_{:07d}_{}_gt.png'.format(iteration, i),
+                        gt[0, :, :, :].transpose(1, 2, 0) *256 + 126)
+                    cv2.imwrite(
+                        'output_{:07d}_{}_result.jpg'.format(iteration, i),
+                        result[0, :, :, :].transpose(1, 2, 0) *256 + 126)
+                    cv2.imwrite(
+                        'output_{:07d}_{}_original.png'.format(iteration, i),
+                        original[0, :, :, :].transpose(1, 2, 0) *256 + 126)
 
-        if loss:
-            loss = np.mean(loss)
-            self.log.info(' Iteration {} test {} metric loss : {}'.format(
-                iteration, self.name, loss))
+                for evaluator in self.evaluators:
+                    evaluator.add(gt=gt, original=original, result=result)
+
+        for layer in loss:
+            value = np.average(loss[layer])
+            self.log.info(' Iteration {} test {} metric loss {}: {}'.format(
+                iteration, self.name, layer, value))
 
         for evaluator in self.evaluators:
             results = evaluator.getResults()
@@ -183,6 +204,52 @@ class Tester(Configurable):
                     results[metric][0] - results[metric][1]))
             evaluator.clear()
         self.log.info(' DONE Test {}'.format(self.name))
+
+
+class filterNormalizer(object):
+    def __init__(self, layers):
+        self.layers = layers
+
+    def normalize(self, net):
+        for layer in net.params:
+            if layer in self.layers:
+                dim = len(net.params[layer][0].data.shape)
+                data = net.params[layer][0].data
+                data = data.reshape(data.shape[0], -1)
+                mean = np.average(data, axis=1).reshape(
+                    [-1] + [1] * (dim - 1))
+
+                data = net.params[layer][0].data - mean
+                energy = np.sum(
+                    data.reshape(data.shape[0], -1)**2, axis=1).reshape(
+                    [-1] + [1] * (dim - 1))
+                net.params[layer][0].data[...] = data / energy
+
+
+class batchBuffer(object):
+    def __init__(self):
+        self.buffer = []
+        self.costs = []
+        self.max_size = 2000
+
+    def add(self, batch):
+        self.buffer = [batch] + self.buffer
+        self.costs = [100.0] + self.costs
+
+        if len(self.buffer) >= self.max_size:
+            self.buffer.pop()
+            self.costs.pop()
+
+        return 0
+
+    def get(self):
+        #prob = np.asarray(self.costs)
+        #prob = prob / prob.sum()
+        id = np.random.choice(len(self.buffer))
+        return self.buffer[id], id, 0
+
+    def updateCost(self, id, cost):
+        self.costs[id] = cost
 
 
 class Trainer(Configurable, multiprocessing.Process):
@@ -232,6 +299,11 @@ class Trainer(Configurable, multiprocessing.Process):
             'save_filters', required=False, default=None,
             parser=bool,
             help='Will save collage of first layer filters.'))
+        self.params.append(parameter(
+            'normalize_layers', required=False, default=[],
+            parser=list,
+            help='List of layer names which should have filters normalized.'))
+
 
     def __init__(self, config):
         multiprocessing.Process.__init__(self)
@@ -252,6 +324,9 @@ class Trainer(Configurable, multiprocessing.Process):
             self.train_data.keys()[0], self.train_data.values()[0])
         self.train_in_queue.init()
         self.batchQueue = Queue.Queue(maxsize=2)
+        self.buffer = batchBuffer()
+
+        self.layerNormalizer = filterNormalizer(self.normalize_layers)
 
     def center_initialization(self, net, step=1):
         """
@@ -297,12 +372,22 @@ class Trainer(Configurable, multiprocessing.Process):
         Run one solver step
         """
         time1 = time.clock()
-        data = self.batchQueue.get()
+        if not self.batchQueue.empty():
+            data = self.batchQueue.get()
+            batch_id = self.buffer.add(data)
+        else:
+            data, batch_id, prob = self.buffer.get()
+            from time import sleep
+            sleep(0.002)
+            #self.log.info(
+            #    ' Reusing training minibatch {}, prob {}. Iteration {}.'.format(batch_id, prob, solver.iter))
         time2 = time.clock()
         fill_net_input(solver.net, data)
 
         time3 = time.clock()
         solver.step(1)
+        self.layerNormalizer.normalize(solver.net)
+        self.buffer.updateCost(batch_id, solver.net.blobs['loss'].data)
         time4 = time.clock()
         self.log.debug(" Train time (fetch, fill, step): {:f} {:f} {:f} {:f}".format(time2-time1, time3-time2, time4-time3, time4-time1))
 
@@ -337,13 +422,15 @@ class Trainer(Configurable, multiprocessing.Process):
             tester.set_net(solver.test_nets[0])
 
         self.log.info(' Setting up network statistics collector.')
-        self.stat = ActivationStat(solver.net)
+        self.stat = ActivationSimpleStat(solver.net)
 
         self.log.info(' Starting data fetching thread.')
 
         self.fetchThreadObj = threading.Thread(target=self.fetchThread,)
         self.fetchThreadObj.setDaemon(True)
         self.fetchThreadObj.start()
+
+        self.buffer.add(self.batchQueue.get())
 
         self.log.info(' Running training.')
         while solver.iter < self.max_iter:
@@ -363,8 +450,10 @@ class Trainer(Configurable, multiprocessing.Process):
 
             # Print and save stats
             if solver.iter % self.stat_interval == 0:
-                self.stat.add_history(solver.net)
-                self.stat.print_stats()
+                #self.stat.add_history(solver.net)
+                self.stat.print_stats(solver.net, solver.iter)
+                self.stat.filter_stats(solver.net, solver.iter)
+
                 #data = solver.net.blobs['data'].data[...].transpose(0,2,3,1)
                 #data = data.reshape(-1, data.shape[2], data.shape[3])
                 #dataOut = solver.net.blobs['cout-scale'].data[...].transpose(0,2,3,1)
@@ -388,8 +477,142 @@ class Trainer(Configurable, multiprocessing.Process):
         self.log.info(" End phase Test.")
         return fetch_flag
 
-class FilterStat(object):
-    pass
+
+class ActivationSimpleStat(object):
+    """
+    Compute the activation stats
+    """
+
+    bins = [-10000, 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+            0.99, 10000]
+
+    def __init__(self, net, history_size=20):
+        """
+        Constructor of actiavation stats
+        """
+        learn_param_keys = [key for key in net.blobs if 'split' not in key]
+        # in net.params if key in net.blobs]
+        self.list_blobs = learn_param_keys
+        self.log = logging.getLogger(__name__ + ".Stats")
+        self.binCount = 100
+
+        self.startBlobs = self.getBlobDict(net)
+        self.lastBlobs = self.getBlobDict(net)
+
+    def getBlobDict(self, net):
+        blobs = {}
+        for layer in net.params:
+            for rank, blob in enumerate(net.params[layer]):
+                if len(blob.data.shape) in [2, 4]:
+                    blobs[(layer, rank)] = np.copy(blob.data.reshape(blob.data.shape[0], -1))
+        return blobs
+
+    def print_stats(self, net, iteration):
+        """
+        Add the layers activations to compute the stats
+        """
+
+        for key in self.list_blobs:
+            # average only of positive values
+            # average of every activation map in the batch
+
+            if len(net.blobs[key].shape) == 2:
+                data = net.blobs[key].data.transpose(1, 0)
+            elif len(net.blobs[key].shape) == 4:
+                data = net.blobs[key].data.transpose(1, 0, 2, 3)
+                data = data.reshape((data.shape[0], -1))
+            else:
+                continue
+
+            # avg_activation = np.average(data > 0, (1))
+
+            bins = np.arange(self.binCount+1).astype(np.float32) / self.binCount * (data.max()-data.min()) + data.min()
+            qdata = ((data - data.min()) / (data.max() - data.min()) * self.binCount + 0.5).astype(np.int32)
+            self.log.info('{} - {}'.format(key, (qdata < 0).sum()))
+            histograms = [np.bincount(line, minlength=self.binCount+1)
+                          for line in qdata]
+            fig = plt.figure()
+            fig.set_size_inches(20, 11)
+            ax = fig.add_subplot(1, 1, 1)
+            fig.subplots_adjust(left=0.02, right=0.99, bottom=0.03, top=0.99)
+            for i in histograms:
+                cum = np.cumsum(i).astype(np.float)
+                ax.plot(bins, cum / cum.max())
+            fig.savefig('{}_{:07d}.png'.format(key, iteration))
+            plt.close(fig)
+
+    def blobCorrelation(self, data, data2):
+        sim = []
+        for x, y in zip(data, data2):
+            sim.append(
+                1.0 - x.dot(y.T) / (x.dot(x)**0.5 * y.dot(y)**0.5))
+        return sim
+
+    def filter_stats(self, net, iteration):
+        for layer in net.params:
+            for rank, blob in enumerate(net.params[layer]):
+                if len(blob.data.shape) in [2, 4]:
+                    data = blob.data.reshape(blob.data.shape[0], -1)
+
+                    startSim = self.blobCorrelation(
+                        data, self.startBlobs[(layer, rank)])
+                    plt.hist(startSim, bins=40, range=(-1.0, 1.0),
+                             normed=1, facecolor='green')
+                    fig = plt.gcf()
+                    fig.savefig(
+                        'sim_{}_{}_{:07d}.png'.format(layer, rank, iteration))
+                    plt.close(fig)
+
+                    lastSim = self.blobCorrelation(
+                        data, self.lastBlobs[(layer, rank)])
+
+                    fig = plt.figure()
+                    ax = fig.add_subplot(1, 1, 1)
+                    ax.plot(startSim, lastSim, 'b+')
+                    ax.set_ylabel('since last')
+                    ax.set_xlabel('since start')
+                    fig.savefig('sim_last_{}_{}_{:07d}.png'.format(
+                        layer, rank, iteration))
+                    plt.close(fig)
+
+                if len(blob.data.shape) == 4 and (blob.data.shape[1] == 3 or blob.data.shape[1] == 1):
+                    filters = [f for f in blob.data.transpose(0, 2, 3, 1)]
+                    # filters = [(x / (np.absolute(x).max()) + 0.5) * 256
+                    #           for x in filters]
+                    side = int(np.ceil(len(filters)**0.5))
+                    for i in range(side**2 - len(filters)):
+                        filters.append(filters[-1])
+                    collage = [np.concatenate(filters[i::side], axis=0)
+                               for i in range(side)]
+                    collage = np.concatenate(collage, axis=1)
+                    collage = (collage / (np.absolute(collage).max()) +
+                               0.5) * 256
+                    cv2.imwrite(
+                        'filter_{}_{}_{:07d}.png'.format(layer, rank, iteration),
+                        collage)
+        self.lastBlobs = self.getBlobDict(net)
+
+
+
+    def xcprint_stats(self):
+        """
+        Print column aligned activation stats
+        """
+        format_msg = []
+        for key, data in self.list_blobs:
+            avg = sum(data) / data.size
+
+            hist, bins = np.histogram(avg, self.bins)
+            hist = hist * (1.0 / np.sum(hist))
+            msg_list = ["{0:3}".format(int(val * 100 + 0.5)) for val in hist]
+            msg_list.insert(0, key + ":")
+            format_msg.append(msg_list)
+        widths = [max(map(len, col)) for col in zip(*format_msg)]
+        for row in format_msg:
+            msg = "  ".join((val.ljust(width) for val, width in
+                             zip(row, widths)))
+            self.log.info(msg)
+
 
 class ActivationStat(object):
     """
