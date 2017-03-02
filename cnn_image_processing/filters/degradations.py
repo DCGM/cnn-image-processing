@@ -74,18 +74,21 @@ class MotionBlur(Configurable):
 
         step = (self.length_range[1] - self.length_range[0]) / self.length_bins
         length_bins = [
-            (x * step, x * step + step) for x in range(self.length_bins)]
+            (self.length_range[0] + x * step, self.length_range[0] +x * step + step)
+            for x in range(self.length_bins)]
         step = (self.dir_range[1] - self.dir_range[0]) / self.dir_bins
         dir_bins = [
-            (x * step, x * step + step) for x in range(self.dir_bins)]
+            (self.dir_range[0] + x * step, self.dir_range[0] + x * step + step)
+            for x in range(self.dir_bins)]
         self.bins = list(itertools.product(length_bins, dir_bins))
-        self.next_bins = list(np.random.permutation(self.bins))
+        self.next_bins = []
+        self.log.info(' Have {} blur bins.'.format(len(self.bins)))
+        self.log.info(' The bins are: {}'.format(self.bins))
 
     def __call__(self, packet, previous):
-        try:
-            length_range, dir_range = self.next_bins.pop()
-        except:
+        if not self.next_bins:
             self.next_bins = list(np.random.permutation(self.bins))
+        length_range, dir_range = self.next_bins.pop()
 
         sampled_slope_deg = self.rng.uniform(
             low=dir_range[0], high=dir_range[1])
@@ -108,7 +111,7 @@ class MotionBlur(Configurable):
         packet['psf'] = psf
 
         packet['data'] = cv2.filter2D(
-            packet['data'], cv2.CV_32F, psf,
+            packet['data'].astype(np.float32), cv2.CV_32F, psf,
             borderType=cv2.BORDER_REPLICATE)
 
         if self.motion_packet:
